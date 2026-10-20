@@ -1,0 +1,145 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-bg: #05080d;
+  --color-panel: #0a1119;
+  --color-panel-2: #0e1620;
+  --color-edge: rgb(92 225 255 / 0.16);
+  --color-ink: #e8eef5;
+  --color-ink-2: #c9d3de;
+  --color-muted: #8a97a8;
+  --color-faint: #6f7c8e;
+  --color-cyan: #5ce1ff;
+  --color-cyan-soft: #a8eeff;
+  --color-violet: #9d8cff;
+  --color-violet-soft: #b9aeff;
+  --color-mint: #4be3a6;
+  --color-amber: #ffb547;
+  --color-danger: #ff7a7a;
+  --font-sans: var(--font-grotesk), system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+}
+
+html {
+  background: #05080d;
+  color-scheme: dark;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background: #05080d;
+  color: #e8eef5;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Fine HUD grid behind everything */
+.hud-bg {
+  background-image:
+    linear-gradient(rgb(92 225 255 / 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(92 225 255 / 0.035) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-position: -1px -1px;
+}
+
+.panel {
+  background: #0a1119;
+  border: 1px solid rgb(92 225 255 / 0.16);
+  border-radius: 20px;
+}
+
+.label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+input,
+select {
+  font: inherit;
+}
+
+.field {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 12px;
+  background: #0e1620;
+  border: 1px solid rgb(255 255 255 / 0.09);
+  color: #e8eef5;
+  padding: 0 12px;
+  outline: none;
+}
+.field:focus {
+  border-color: #5ce1ff;
+}
+
+.btn {
+  min-height: 44px;
+  border-radius: 12px;
+  padding: 0 16px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+.btn:active {
+  transform: scale(0.98);
+}
+.btn-primary {
+  background: rgb(92 225 255 / 0.12);
+  border: 1px solid rgb(92 225 255 / 0.7);
+  color: #e8eef5;
+}
+.btn-primary:hover {
+  background: rgb(92 225 255 / 0.2);
+}
+.btn-ghost {
+  border: 1px solid rgb(255 255 255 / 0.1);
+  color: #c9d3de;
+}
+.btn-ghost:hover {
+  border-color: rgb(92 225 255 / 0.4);
+}
+
+:focus-visible {
+  outline: 2px solid #a8eeff;
+  outline-offset: 3px;
+}
+
+@keyframes jv-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgb(92 225 255 / 0.35), 0 0 24px rgb(92 225 255 / 0.35); }
+  50% { box-shadow: 0 0 0 10px rgb(92 225 255 / 0), 0 0 36px rgb(92 225 255 / 0.55); }
+}
+@keyframes jv-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.06); opacity: 1; }
+}
+@keyframes jv-spin { to { transform: rotate(360deg); } }
+@keyframes jv-spin-r { to { transform: rotate(-360deg); } }
+@keyframes jv-listen {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.14); }
+}
+@keyframes jv-fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.orb-pulse { animation: jv-pulse 3.2s ease-in-out infinite; }
+.orb-core { animation: jv-breathe 2.6s ease-in-out infinite; }
+.orb-core.speaking { animation-duration: 0.9s; }
+.orb-core.listening { animation: jv-listen 0.7s ease-in-out infinite; }
+.jv-ring-a { animation: jv-spin 18s linear infinite; transform-origin: center; }
+.jv-ring-b { animation: jv-spin-r 26s linear infinite; transform-origin: center; }
+.fade-up { animation: jv-fade-up 0.35s ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .orb-pulse, .orb-core, .jv-ring-a, .jv-ring-b, .fade-up { animation: none !important; }
+}
+
+/* Room for the iPhone home indicator */
+.safe-bottom { padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+.safe-top { padding-top: max(20px, env(safe-area-inset-top)); }
