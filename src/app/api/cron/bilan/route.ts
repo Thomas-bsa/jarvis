@@ -1,9 +1,11 @@
 import { timingSafeEqual } from "node:crypto";
+import { connection } from "next/server";
 import { getCronSecret, sendToAll } from "@/lib/push";
 
 // Called every evening at 23:00 (Paris) by cron-job.org:
 //   GET /api/cron/bilan?key=<secret shown in Réglages>
 export async function GET(req: Request) {
+  await connection();
   const given = Buffer.from(new URL(req.url).searchParams.get("key") ?? "");
   const secret = Buffer.from(await getCronSecret());
   if (given.length !== secret.length || !timingSafeEqual(given, secret)) {

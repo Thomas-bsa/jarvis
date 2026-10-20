@@ -69,7 +69,7 @@ function pg(): postgres.Sql {
     const url = new URL(dbUrl());
     const local = ["localhost", "127.0.0.1"].includes(url.hostname);
     url.search = "";
-    sql = postgres(url.toString(), { prepare: false, max: 3, idle_timeout: 20, onnotice: () => {}, ssl: local ? false : "require" });
+    sql = postgres(url.toString(), { prepare: false, max: 3, idle_timeout: 20, connect_timeout: 10, onnotice: () => {}, ssl: local ? false : "require" });
   }
   return sql;
 }

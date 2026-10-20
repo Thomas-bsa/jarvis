@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { getSummary } from "@/lib/stats";
 import { dbEnvName, pingDb, store } from "@/lib/store";
 
@@ -11,11 +12,16 @@ const clean = (e: unknown) =>
 
 // Diagnostic page: runs each building block and reports which one fails, without revealing secrets.
 export async function GET() {
+  await connection(); // always run at request time, never at build time
   const checks: Record<string, string> = {};
   const run = async (name: string, fn: () => Promise<unknown>) => {
+    const t0 = Date.now();
     try {
-      await fn();
-      checks[name] = "OK";
+      await Promise.race([
+        fn(),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("bloqué plus de 8 s")), 8000)),
+      ]);
+      checks[name] = `OK (${Date.now() - t0} ms)`;
     } catch (e) {
       checks[name] = clean(e);
     }
