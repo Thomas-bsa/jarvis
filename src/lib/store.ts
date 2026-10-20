@@ -33,8 +33,29 @@ export interface Store {
   deletePush(endpoint: string): Promise<void>;
 }
 
-export const dbUrl = () =>
-  process.env.POSTGRES_URL || process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || "";
+// Integrations may add a prefix (e.g. STORAGE_POSTGRES_URL), so look for any matching name.
+export function dbEnvName(): string | null {
+  const keys = Object.keys(process.env).filter((k) => process.env[k]);
+  const pick = (re: RegExp) => keys.filter((k) => re.test(k)).sort((a, b) => a.length - b.length)[0];
+  return (
+    pick(/(^|_)POSTGRES_URL$/) ??
+    pick(/(^|_)DATABASE_URL$/) ??
+    pick(/(^|_)SUPABASE_DB_URL$/) ??
+    pick(/(^|_)POSTGRES_URL_NON_POOLING$/) ??
+    null
+  );
+}
+
+export const dbUrl = () => {
+  const name = dbEnvName();
+  return name ? process.env[name]! : "";
+};
+
+/** Runs a trivial query; used by the diagnostic page. */
+export async function pingDb(): Promise<void> {
+  await ensureSchema();
+  await pg()`select 1`;
+}
 
 // ---------- Postgres ----------
 
