@@ -1,5 +1,6 @@
 import "server-only";
 import { store } from "./store";
+import { getOrgaToday } from "./orga";
 import { getSummary, type Summary } from "./stats";
 import { fmtHours, fmtMinutes, longDate, parisDay, parisTime } from "./time";
 import { SUBJECTS } from "./types";
@@ -59,7 +60,7 @@ Tu peux enregistrer du travail, du sport et l'heure de coucher avec tes outils. 
 
 const BILAN = `C'est le bilan du soir. Déroulé :
 1) Résume sa journée de travail d'après les données, et demande s'il a travaillé sans le minuteur (si oui, enregistre-le).
-2) Demande s'il a fait du sport (si oui, enregistre-le).
+2) Demande s'il a fait du sport (si oui, enregistre-le). S'il reste des devoirs pour demain non faits, rappelle-les brièvement.
 3) Dis où il en est sur ses trois objectifs (travail, sommeil, sport) en une ou deux phrases, avec un conseil concret pour demain.
 4) Quand il dit bonne nuit ou que le bilan est fini, enregistre le coucher, souhaite bonne nuit et indique l'heure de réveil conseillée pour son objectif de sommeil.
 Une seule question à la fois.`;
@@ -119,7 +120,7 @@ async function gemini(messages: ChatMsg[], mode: "bilan" | "libre", s: Summary):
     { role: "user", parts: [{ text: mode === "bilan" ? "[Le bilan de 23 h commence. Ouvre la conversation.]" : "[Thomas ouvre Jarvis.]" }] },
     ...messages.map<Content>((m) => ({ role: m.role === "jarvis" ? "model" : "user", parts: [{ text: m.text }] })),
   ];
-  const system = `${PERSONA}\n\n${mode === "bilan" ? BILAN : "Réponds à sa demande."}\n\nDonnées actuelles :\n${context(s)}`;
+  const system = `${PERSONA}\n\n${mode === "bilan" ? BILAN : "Réponds à sa demande."}\n\nDonnées actuelles :\n${context(s)}\n${await orgaContext()}`;
   const logged: string[] = [];
   let bedtime = false;
 
@@ -251,6 +252,20 @@ async function scripted(messages: ChatMsg[], s: Summary): Promise<JarvisReply> {
 
 // French typography: no line break before ? ! : ;
 const tidy = (r: JarvisReply): JarvisReply => ({ ...r, reply: r.reply.replace(/ ([?!:;])/g, "\u00a0$1") });
+
+async function orgaContext(): Promise<string> {
+  try {
+    const o = await getOrgaToday();
+    const list = (h: { subject: string; title: string }[]) => h.map((x) => `${x.subject} : ${x.title}`).join(" ; ");
+    return [
+      `Devoirs pour demain non faits : ${o.dueTomorrow.length ? list(o.dueTomorrow) : "aucun"}.`,
+      `Devoirs en retard : ${o.late.length ? list(o.late) : "aucun"}.`,
+      `Tâches de la to-do list en attente : ${o.openTodos}.`,
+    ].join("\n");
+  } catch {
+    return "";
+  }
+}
 
 export async function talk(messages: ChatMsg[], mode: "bilan" | "libre"): Promise<JarvisReply> {
   return tidy(await talkRaw(messages, mode));

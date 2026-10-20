@@ -176,3 +176,87 @@ export async function setHolidayMode(on: boolean) {
   await store.saveSettings(s);
   refresh();
 }
+
+// ---------- Organisation ----------
+
+const hm = (v: FormDataEntryValue | null) => {
+  const t = String(v ?? "");
+  return /^\d\d:\d\d$/.test(t) ? t : null;
+};
+
+export async function addSlot(form: FormData) {
+  await guard();
+  const weekday = num(form.get("weekday"), 0, 6);
+  const start = hm(form.get("start"));
+  const end = hm(form.get("end"));
+  const subject = String(form.get("subject") ?? "").trim();
+  if (weekday == null || !start || !end || !subject || end <= start) return;
+  await store.addSlot({
+    weekday: Math.round(weekday),
+    start,
+    end,
+    subject: subject.slice(0, 60),
+    kind: String(form.get("kind") ?? "Cours").slice(0, 20),
+    room: String(form.get("room") ?? "").trim().slice(0, 30),
+  });
+  refresh();
+}
+
+export async function deleteSlot(id: string) {
+  await guard();
+  await store.deleteSlot(id);
+  refresh();
+}
+
+export async function addTodo(form: FormData) {
+  await guard();
+  const title = String(form.get("title") ?? "").trim();
+  if (!title) return;
+  await store.addTodo({ title: title.slice(0, 200), done: false, created: new Date().toISOString() });
+  refresh();
+}
+
+export async function toggleTodo(id: string, done: boolean) {
+  await guard();
+  await store.setTodoDone(id, done);
+  refresh();
+}
+
+export async function deleteTodo(id: string) {
+  await guard();
+  await store.deleteTodo(id);
+  refresh();
+}
+
+export async function clearDoneTodos() {
+  await guard();
+  const done = (await store.listTodos()).filter((t) => t.done);
+  for (const t of done) await store.deleteTodo(t.id);
+  refresh();
+}
+
+export async function addHomework(form: FormData) {
+  await guard();
+  const title = String(form.get("title") ?? "").trim();
+  const due = String(form.get("due") ?? "");
+  if (!title || !/^\d{4}-\d\d-\d\d$/.test(due)) return;
+  await store.addHomework({
+    subject: String(form.get("subject") ?? "Autre").slice(0, 40),
+    title: title.slice(0, 200),
+    due,
+    done: false,
+  });
+  refresh();
+}
+
+export async function toggleHomework(id: string, done: boolean) {
+  await guard();
+  await store.setHomeworkDone(id, done);
+  refresh();
+}
+
+export async function deleteHomework(id: string) {
+  await guard();
+  await store.deleteHomework(id);
+  refresh();
+}

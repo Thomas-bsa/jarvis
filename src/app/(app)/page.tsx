@@ -2,11 +2,14 @@ import Link from "next/link";
 import { wakeUp } from "@/app/actions";
 import { Ring } from "@/components/Ring";
 import { WeekBars } from "@/components/WeekBars";
+import { getOrgaToday, KIND_COLOR, minutesBetween } from "@/lib/orga";
 import { getSummary } from "@/lib/stats";
 import { fmtHours, fmtMinutes, greeting, longDate, parisTime } from "@/lib/time";
 
 export default async function Home() {
-  const s = await getSummary();
+  const [s, o] = await Promise.all([getSummary(), getOrgaToday()]);
+  const slot = o.current ?? o.next;
+  const now = parisTime();
   const t = s.settings.targets;
   const sleepNow = s.lastNightH ?? s.avgSleepH;
   const sportLeft = Math.max(0, t.sportPerWeek - s.sportThisWeek);
@@ -65,6 +68,44 @@ export default async function Home() {
         />
         <Ring label="Sport" value={String(s.sportThisWeek)} target={`${t.sportPerWeek} / sem.`} pct={s.sportThisWeek / Math.max(1, t.sportPerWeek)} color="#4BE3A6" />
       </section>
+
+      <Link href="/orga" aria-label="Organisation" className="panel flex flex-col gap-3 p-4">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-[15px] font-medium">Organisation</h2>
+          <span className="font-mono text-xs text-muted">
+            {o.slotsToday.length} cours · {o.openTodos} à faire
+          </span>
+        </div>
+        {slot ? (
+          <div className="flex items-center gap-3">
+            <span
+              className="h-9 w-1 shrink-0 rounded-full"
+              style={{ background: KIND_COLOR[slot.kind] ?? KIND_COLOR.Autre, boxShadow: `0 0 10px ${KIND_COLOR[slot.kind] ?? KIND_COLOR.Autre}` }}
+            />
+            <div className="min-w-0 flex-1">
+              <div className="truncate">
+                {slot.subject} <span className="text-sm text-muted">· {slot.kind}{slot.room ? ` · ${slot.room}` : ""}</span>
+              </div>
+              <div className="font-mono text-xs text-muted">
+                {slot.start} → {slot.end} ·{" "}
+                {o.current ? <span className="text-cyan">en cours</span> : `dans ${fmtMinutes(minutesBetween(now, slot.start))}`}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-sm text-muted">{o.slotsToday.length ? "Plus de cours aujourd'hui." : "Pas de cours prévu aujourd'hui."}</div>
+        )}
+        {(o.dueTomorrow.length > 0 || o.late.length > 0) && (
+          <div className="flex flex-col gap-1 border-t border-white/[0.06] pt-3 text-sm">
+            {o.late.length > 0 && <div className="text-danger">{o.late.length} devoir{o.late.length > 1 ? "s" : ""} en retard</div>}
+            {o.dueTomorrow.map((h) => (
+              <div key={h.id} className="truncate text-ink-2">
+                <span className="font-mono text-[11px] uppercase tracking-wider text-amber">Demain · {h.subject}</span> {h.title}
+              </div>
+            ))}
+          </div>
+        )}
+      </Link>
 
       <section aria-label="Travail sur 7 jours" className="panel flex flex-col gap-3 p-4">
         <div className="flex items-baseline justify-between">

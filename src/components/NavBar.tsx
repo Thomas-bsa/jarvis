@@ -15,6 +15,16 @@ const ITEMS = [
     icon: <path d="M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />,
   },
   {
+    href: "/orga",
+    label: "Orga",
+    icon: (
+      <>
+        <rect x="3.5" y="5" width="17" height="15.5" rx="2.5" />
+        <path d="M3.5 10h17M8 3v4M16 3v4M8 14.5l2 2 4-4" />
+      </>
+    ),
+  },
+  {
     href: "/bilan",
     label: "Jarvis",
     icon: (
@@ -38,7 +48,7 @@ export function NavBar() {
       aria-label="Navigation"
       className="safe-bottom fixed inset-x-0 bottom-0 z-20 border-t border-edge bg-[#070C12]/95 backdrop-blur"
     >
-      <div className="mx-auto grid max-w-lg grid-cols-4 px-4 pt-2">
+      <div className="mx-auto grid max-w-lg grid-cols-5 px-2 pt-2">
         {ITEMS.map((it) => {
           const active = it.href === "/" ? path === "/" : path.startsWith(it.href);
           return (

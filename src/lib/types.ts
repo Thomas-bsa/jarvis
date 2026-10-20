@@ -63,3 +63,34 @@ export type PushSub = {
   endpoint: string;
   keys: { p256dh: string; auth: string };
 };
+
+// ---------- Organisation ----------
+
+export const SLOT_KINDS = ["Cours", "TD", "TP", "Colle", "DS", "Autre"] as const;
+
+/** A recurring class in the weekly timetable. */
+export type ClassSlot = {
+  id: string;
+  weekday: number; // 0 = Monday … 6 = Sunday
+  start: string; // "HH:MM"
+  end: string; // "HH:MM"
+  subject: string;
+  kind: string;
+  room: string;
+};
+
+export type Todo = {
+  id: string;
+  title: string;
+  done: boolean;
+  created: string; // ISO instant
+};
+
+/** Homework, due on a given day. */
+export type Homework = {
+  id: string;
+  subject: string;
+  title: string;
+  due: string; // YYYY-MM-DD
+  done: boolean;
+};
