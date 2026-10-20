@@ -53,57 +53,64 @@ export const dbUrl = () => {
 
 /** Runs a trivial query; used by the diagnostic page. */
 export async function pingDb(): Promise<void> {
-  await ensureSchema();
-  await pg()`select 1`;
+  await q((s) => s`select 1`);
 }
 
 // ---------- Postgres ----------
 
-let sql: postgres.Sql | null = null;
-let ready: Promise<void> | null = null;
+// On Vercel the function can be frozen between visits, which silently kills open
+// database sockets. So each operation opens its own short connection and closes it.
+function client(): postgres.Sql {
+  // Hosted URLs carry extra query flags (e.g. "supa=…") that Postgres would reject.
+  const url = new URL(dbUrl());
+  const local = ["localhost", "127.0.0.1"].includes(url.hostname);
+  url.search = "";
+  // prepare: false keeps it compatible with Supabase's connection pooler.
+  return postgres(url.toString(), {
+    prepare: false,
+    max: 1,
+    connect_timeout: 10,
+    onnotice: () => {},
+    ssl: local ? false : "require",
+  });
+}
 
-function pg(): postgres.Sql {
-  if (!sql) {
-    // prepare: false keeps it compatible with Supabase's connection pooler.
-    // Hosted URLs carry extra query flags (e.g. "supa=…") that Postgres would reject.
-    const url = new URL(dbUrl());
-    const local = ["localhost", "127.0.0.1"].includes(url.hostname);
-    url.search = "";
-    sql = postgres(url.toString(), { prepare: false, max: 1, idle_timeout: 20, connect_timeout: 10, onnotice: () => {}, ssl: local ? false : "require" });
+let schemaReady = false;
+
+async function q<T>(fn: (s: postgres.Sql) => Promise<T>): Promise<T> {
+  const s = client();
+  try {
+    if (!schemaReady) {
+      await ensureSchema(s);
+      schemaReady = true;
+    }
+    return await fn(s);
+  } finally {
+    s.end({ timeout: 2 }).catch(() => {});
   }
-  return sql;
 }
 
 // Tables are created automatically on first use: nothing to paste in Supabase.
-async function ensureSchema() {
-  if (!ready) {
-    const s = pg();
-    ready = (async () => {
-      // Already set up? Then skip the DDL (it takes locks).
-      const [row] = await s`select to_regclass('public.push_subscriptions') is not null as ok`;
-      if (row?.ok) return;
-      await s`create table if not exists work_sessions (
-        id text primary key, subject text not null,
-        start timestamptz not null, minutes integer not null)`;
-      await s`create table if not exists sleep_logs (
-        id text primary key, bed timestamptz not null, wake timestamptz)`;
-      await s`create table if not exists sport_sessions (
-        id text primary key, day date not null,
-        activity text not null, minutes integer not null)`;
-      await s`create table if not exists app_settings (
-        id integer primary key, data jsonb not null)`;
-      await s`create table if not exists push_subscriptions (
-        endpoint text primary key, data jsonb not null)`;
-      // Only the server talks to the database: lock tables against the public API.
-      for (const t of ["work_sessions", "sleep_logs", "sport_sessions", "app_settings", "push_subscriptions"]) {
-        await s.unsafe(`alter table ${t} enable row level security`);
-      }
-    })().catch((e) => {
-      ready = null;
-      throw e;
-    });
+async function ensureSchema(s: postgres.Sql) {
+  // Already set up? Then skip the DDL (it takes locks).
+  const [row] = await s`select to_regclass('public.push_subscriptions') is not null as ok`;
+  if (row?.ok) return;
+  await s`create table if not exists work_sessions (
+    id text primary key, subject text not null,
+    start timestamptz not null, minutes integer not null)`;
+  await s`create table if not exists sleep_logs (
+    id text primary key, bed timestamptz not null, wake timestamptz)`;
+  await s`create table if not exists sport_sessions (
+    id text primary key, day date not null,
+    activity text not null, minutes integer not null)`;
+  await s`create table if not exists app_settings (
+    id integer primary key, data jsonb not null)`;
+  await s`create table if not exists push_subscriptions (
+    endpoint text primary key, data jsonb not null)`;
+  // Only the server talks to the database: lock tables against the public API.
+  for (const t of ["work_sessions", "sleep_logs", "sport_sessions", "app_settings", "push_subscriptions"]) {
+    await s.unsafe(`alter table ${t} enable row level security`);
   }
-  return ready;
 }
 
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v));
@@ -111,73 +118,52 @@ const day = (v: unknown) =>
   v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10);
 
 const pgStore: Store = {
-  async listWork(since) {
-    await ensureSchema();
-    const rows = await pg()`select * from work_sessions where start >= ${since} order by start`;
-    return rows.map((r) => ({ id: r.id, subject: r.subject, start: iso(r.start), minutes: r.minutes }));
-  },
-  async addWork(w) {
-    await ensureSchema();
-    await pg()`insert into work_sessions ${pg()({ id: randomUUID(), ...w })}`;
-  },
-  async deleteWork(id) {
-    await ensureSchema();
-    await pg()`delete from work_sessions where id = ${id}`;
-  },
-  async listSleep(since) {
-    await ensureSchema();
-    const rows = await pg()`select * from sleep_logs where bed >= ${since} order by bed`;
-    return rows.map((r) => ({ id: r.id, bed: iso(r.bed), wake: r.wake ? iso(r.wake) : null }));
-  },
-  async addSleep(s) {
-    await ensureSchema();
-    await pg()`insert into sleep_logs ${pg()({ id: randomUUID(), bed: s.bed, wake: s.wake })}`;
-  },
-  async setWake(id, wake) {
-    await ensureSchema();
-    await pg()`update sleep_logs set wake = ${wake} where id = ${id}`;
-  },
-  async deleteSleep(id) {
-    await ensureSchema();
-    await pg()`delete from sleep_logs where id = ${id}`;
-  },
-  async listSport(since) {
-    await ensureSchema();
-    const rows = await pg()`select * from sport_sessions where day >= ${since} order by day`;
-    return rows.map((r) => ({ id: r.id, day: day(r.day), activity: r.activity, minutes: r.minutes }));
-  },
-  async addSport(s) {
-    await ensureSchema();
-    await pg()`insert into sport_sessions ${pg()({ id: randomUUID(), ...s })}`;
-  },
-  async deleteSport(id) {
-    await ensureSchema();
-    await pg()`delete from sport_sessions where id = ${id}`;
-  },
-  async getSettings() {
-    await ensureSchema();
-    const rows = await pg()`select data from app_settings where id = 1`;
-    return { ...DEFAULT_SETTINGS, ...(rows[0]?.data ?? {}) };
-  },
-  async saveSettings(s) {
-    await ensureSchema();
-    await pg()`insert into app_settings (id, data) values (1, ${pg().json(s as never)})
-      on conflict (id) do update set data = excluded.data`;
-  },
-  async listPush() {
-    await ensureSchema();
-    const rows = await pg()`select data from push_subscriptions`;
-    return rows.map((r) => r.data as PushSub);
-  },
-  async savePush(p) {
-    await ensureSchema();
-    await pg()`insert into push_subscriptions (endpoint, data) values (${p.endpoint}, ${pg().json(p as never)})
-      on conflict (endpoint) do update set data = excluded.data`;
-  },
-  async deletePush(endpoint) {
-    await ensureSchema();
-    await pg()`delete from push_subscriptions where endpoint = ${endpoint}`;
-  },
+  listWork: (since) =>
+    q(async (s) => {
+      const rows = await s`select * from work_sessions where start >= ${since} order by start`;
+      return rows.map((r) => ({ id: r.id, subject: r.subject, start: iso(r.start), minutes: r.minutes }));
+    }),
+  addWork: (w) => q(async (s) => void (await s`insert into work_sessions ${s({ id: randomUUID(), ...w })}`)),
+  deleteWork: (id) => q(async (s) => void (await s`delete from work_sessions where id = ${id}`)),
+  listSleep: (since) =>
+    q(async (s) => {
+      const rows = await s`select * from sleep_logs where bed >= ${since} order by bed`;
+      return rows.map((r) => ({ id: r.id, bed: iso(r.bed), wake: r.wake ? iso(r.wake) : null }));
+    }),
+  addSleep: (x) =>
+    q(async (s) => void (await s`insert into sleep_logs ${s({ id: randomUUID(), bed: x.bed, wake: x.wake })}`)),
+  setWake: (id, wake) => q(async (s) => void (await s`update sleep_logs set wake = ${wake} where id = ${id}`)),
+  deleteSleep: (id) => q(async (s) => void (await s`delete from sleep_logs where id = ${id}`)),
+  listSport: (since) =>
+    q(async (s) => {
+      const rows = await s`select * from sport_sessions where day >= ${since} order by day`;
+      return rows.map((r) => ({ id: r.id, day: day(r.day), activity: r.activity, minutes: r.minutes }));
+    }),
+  addSport: (x) => q(async (s) => void (await s`insert into sport_sessions ${s({ id: randomUUID(), ...x })}`)),
+  deleteSport: (id) => q(async (s) => void (await s`delete from sport_sessions where id = ${id}`)),
+  getSettings: () =>
+    q(async (s) => {
+      const rows = await s`select data from app_settings where id = 1`;
+      return { ...DEFAULT_SETTINGS, ...(rows[0]?.data ?? {}) };
+    }),
+  saveSettings: (x) =>
+    q(
+      async (s) =>
+        void (await s`insert into app_settings (id, data) values (1, ${s.json(x as never)})
+          on conflict (id) do update set data = excluded.data`)
+    ),
+  listPush: () =>
+    q(async (s) => {
+      const rows = await s`select data from push_subscriptions`;
+      return rows.map((r) => r.data as PushSub);
+    }),
+  savePush: (x) =>
+    q(
+      async (s) =>
+        void (await s`insert into push_subscriptions (endpoint, data) values (${x.endpoint}, ${s.json(x as never)})
+          on conflict (endpoint) do update set data = excluded.data`)
+    ),
+  deletePush: (endpoint) => q(async (s) => void (await s`delete from push_subscriptions where endpoint = ${endpoint}`)),
 };
 
 // ---------- Local JSON file ----------
