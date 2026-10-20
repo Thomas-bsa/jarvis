@@ -26,6 +26,12 @@ Assistant personnel de Thomas (PTSI) : suivi du **travail**, du **sommeil** et d
 | `GEMINI_API_KEY` | non | Rend Jarvis vraiment conversationnel |
 | `GEMINI_MODEL` | non | Modèle Gemini (par défaut `gemini-2.5-flash`) |
 
+## Mise en ligne
+
+1. Importer le dépôt sur Vercel (offre Hobby).
+2. Installer Supabase depuis https://vercel.com/marketplace/supabase et le relier au projet : `POSTGRES_URL` est ajouté automatiquement.
+3. Redéployer (un simple push sur `main` suffit).
+
 ## Notification de 23 h
 
 Un service gratuit (cron-job.org) appelle chaque soir à 23:00, heure de Paris, l'adresse affichée dans **Réglages › Adresse du réveil de 23 h**.
