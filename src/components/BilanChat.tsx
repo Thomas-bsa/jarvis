@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { canRecord, startRecording, type Recording } from "@/lib/recorder";
 import { Orb, type OrbState } from "./Orb";
 
 type Msg = { role: "jarvis" | "user"; text: string };
@@ -26,6 +27,21 @@ function getRecognition(): Recognition | null {
   return Ctor ? new Ctor() : null;
 }
 
+// "native": Safari's speech recognition. "record": record and let Jarvis transcribe (iPhone home-screen app).
+type Ear = "native" | "record" | "none";
+
+/** The iPhone home-screen app blocks Safari's speech recognition. */
+function isIosStandalone(): boolean {
+  const n = navigator as Navigator & { standalone?: boolean };
+  return n.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
+}
+
+function chooseEar(gemini: boolean): Ear {
+  if (getRecognition() && !isIosStandalone()) return "native";
+  if (gemini && canRecord()) return "record";
+  return getRecognition() ? "native" : "none";
+}
+
 function pickVoice(): SpeechSynthesisVoice | null {
   const voices = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith("fr"));
   // Deep male French voices first ("Thomas" is the iPhone's French male voice).
@@ -37,7 +53,7 @@ function pickVoice(): SpeechSynthesisVoice | null {
   return voices.find((v) => v.lang === "fr-FR") ?? voices[0] ?? null;
 }
 
-export function BilanChat({ initialMode }: { initialMode: Mode }) {
+export function BilanChat({ initialMode, gemini }: { initialMode: Mode; gemini: boolean }) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>(initialMode);
   const [started, setStarted] = useState(false);
@@ -48,8 +64,10 @@ export function BilanChat({ initialMode }: { initialMode: Mode }) {
   const [logged, setLogged] = useState<string[]>([]);
   const [done, setDone] = useState(false);
   const [voiceOn, setVoiceOn] = useState(true);
-  const [canListen, setCanListen] = useState(false);
+  const [ear, setEar] = useState<Ear>("none");
+  const [notice, setNotice] = useState("");
   const recRef = useRef<Recognition | null>(null);
+  const recordingRef = useRef<Recording | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -107,16 +125,16 @@ export function BilanChat({ initialMode }: { initialMode: Mode }) {
   const begin = (m: Mode) => {
     setMode(m);
     setStarted(true);
-    setCanListen(Boolean(getRecognition()));
+    setEar(chooseEar(gemini));
     // Unlock speech on iPhone: it must start from a tap.
     if (typeof speechSynthesis !== "undefined") speechSynthesis.speak(new SpeechSynthesisUtterance(""));
     if (m === "bilan") void send([]);
     else setMsgs([{ role: "jarvis", text: "À votre service, Monsieur. Que puis-je faire ?" }]);
   };
 
-  const submit = (text: string) => {
+  const submit = (text: string, fromVoice = false) => {
     const t = text.trim();
-    if (!t || state === "thinking") return;
+    if (!t || (state === "thinking" && !fromVoice)) return;
     setDraft("");
     setInterim("");
     const history = [...msgs, { role: "user" as const, text: t }];
@@ -124,12 +142,51 @@ export function BilanChat({ initialMode }: { initialMode: Mode }) {
     void send(history);
   };
 
+  // Record, then have Jarvis transcribe (used where Safari's recognition is blocked).
+  const listenRecord = async () => {
+    if (state === "listening") {
+      const r = recordingRef.current;
+      recordingRef.current = null;
+      if (!r) return;
+      setState("thinking");
+      setInterim("Transcription…");
+      try {
+        const audio = await r.stop();
+        const res = await fetch("/api/jarvis/ecoute", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ audio }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { text?: string; error?: string };
+        setInterim("");
+        setState("idle");
+        if (data.text?.trim()) submit(data.text, true);
+        else setNotice(res.ok ? "Je n'ai rien entendu, Monsieur. Réessayez en parlant près du micro." : "La transcription a échoué. Réessayez, ou écrivez votre réponse.");
+      } catch {
+        setInterim("");
+        setState("idle");
+        setNotice("La transcription a échoué. Réessayez, ou écrivez votre réponse.");
+      }
+      return;
+    }
+    if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
+    setNotice("");
+    try {
+      recordingRef.current = await startRecording();
+      setState("listening");
+    } catch {
+      setNotice("Micro refusé. Autorisez-le : Réglages de l'iPhone › Safari › Microphone › Autoriser, puis relancez Jarvis.");
+    }
+  };
+
   const listen = () => {
+    if (ear === "record") return void listenRecord();
     if (state === "listening") {
       recRef.current?.stop();
       return;
     }
-    speechSynthesis?.cancel();
+    if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
+    setNotice("");
     const rec = getRecognition();
     if (!rec) return;
     recRef.current = rec;
@@ -147,7 +204,16 @@ export function BilanChat({ initialMode }: { initialMode: Mode }) {
       }
       setInterim(finalText + live);
     };
-    rec.onerror = () => setState("idle");
+    rec.onerror = (e) => {
+      setState("idle");
+      if (e.error === "service-not-allowed" || e.error === "not-allowed") {
+        // Blocked here: switch to recording if Jarvis can transcribe.
+        if (gemini && canRecord()) {
+          setEar("record");
+          setNotice("Je passe en mode enregistrement. Touchez le micro à nouveau, Monsieur.");
+        } else setNotice("Le micro est bloqué ici. Utilisez la dictée du clavier (🎤) dans le champ ci-dessous.");
+      }
+    };
     rec.onend = () => {
       setState("idle");
       const said = finalText || "";
@@ -242,7 +308,13 @@ export function BilanChat({ initialMode }: { initialMode: Mode }) {
         </Link>
       ) : (
         <div className="flex flex-col items-center gap-3">
-          {canListen && (
+          {notice && <p className="fade-up text-center text-[13px] text-amber" role="status">{notice}</p>}
+          {ear === "none" && (
+            <p className="text-center text-[13px] text-muted">
+              Pour parler, touchez le champ ci-dessous puis le micro 🎤 du clavier.
+            </p>
+          )}
+          {ear !== "none" && (
             <>
               <button
                 onClick={listen}
@@ -259,7 +331,7 @@ export function BilanChat({ initialMode }: { initialMode: Mode }) {
                   <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
                 </svg>
               </button>
-              <div className="text-[13px] text-muted">{state === "listening" ? "Touchez pour terminer" : "Touchez pour répondre"}</div>
+              <div className="text-[13px] text-muted">{state === "listening" ? "Touchez quand vous avez fini" : "Touchez pour parler"}</div>
             </>
           )}
           <form
@@ -274,7 +346,7 @@ export function BilanChat({ initialMode }: { initialMode: Mode }) {
               id="jv-input"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              placeholder={canListen ? "…ou écrivez ici" : "Écrivez à Jarvis"}
+              placeholder={ear !== "none" ? "…ou écrivez ici" : "Écrivez à Jarvis"}
               className="field"
               autoComplete="off"
             />

@@ -1,8 +1,9 @@
 import "server-only";
+import { generate } from "./gemini";
 import { store } from "./store";
 import { getOrgaToday } from "./orga";
 import { getSummary, type Summary } from "./stats";
-import { fmtHours, fmtMinutes, longDate, parisDay, parisTime } from "./time";
+import { addDays, fmtHours, fmtMinutes, longDate, parisDay, parisTime } from "./time";
 import { SUBJECTS } from "./types";
 
 export type ChatMsg = { role: "jarvis" | "user"; text: string };
@@ -43,7 +44,7 @@ function context(s: Summary): string {
   const t = s.settings.targets;
   const subjects = s.todayBySubject.map((x) => `${x.subject} ${fmtMinutes(x.minutes)}`).join(", ") || "rien au minuteur";
   return [
-    `Nous sommes le ${longDate()}, il est ${parisTime()} (heure de Paris).`,
+    `Nous sommes le ${longDate()} (${parisDay()}), il est ${parisTime()} (heure de Paris).`,
     `Période : ${s.settings.holidayMode ? "vacances" : "cours"}. Objectif de travail du jour : ${fmtHours(s.workTargetH)}.`,
     `Travail enregistré aujourd'hui : ${fmtMinutes(s.todayWorkMin)} (${subjects}).`,
     `Travail sur 7 jours : ${fmtHours(s.weekWorkH)}.`,
@@ -56,7 +57,7 @@ const PERSONA = `Tu es JARVIS, l'assistant personnel de Thomas, étudiant en cla
 Ton style : celui de J.A.R.V.I.S. dans Iron Man. Tu le vouvoies et l'appelles « Monsieur ». Calme, précis, bienveillant, une pointe d'humour pince-sans-rire.
 Tes réponses sont lues à voix haute : phrases courtes, 1 à 3 phrases, pas de listes, pas de markdown, pas d'émoji. Écris les durées comme on les dit (« trois heures dix »).
 Matières possibles : ${SUBJECTS.join(", ")}.
-Tu peux enregistrer du travail, du sport et l'heure de coucher avec tes outils. N'invente jamais de données.`;
+Tu peux enregistrer du travail, du sport et l'heure de coucher, et ajouter des tâches ou des devoirs, avec tes outils. N'invente jamais de données.`;
 
 const BILAN = `C'est le bilan du soir. Déroulé :
 1) Résume sa journée de travail d'après les données, et demande s'il a travaillé sans le minuteur (si oui, enregistre-le).
@@ -66,6 +67,22 @@ const BILAN = `C'est le bilan du soir. Déroulé :
 Une seule question à la fois.`;
 
 // ---------- Gemini ----------
+
+async function addTask(title: string): Promise<ToolResult> {
+  const t = String(title ?? "").trim().slice(0, 200);
+  if (!t) return { ok: false, message: "tâche vide" };
+  await store.addTodo({ title: t, done: false, created: new Date().toISOString() });
+  return { ok: true, message: `tâche ajoutée : ${t}` };
+}
+
+async function addHomeworkTool(subject: string, title: string, due: string): Promise<ToolResult> {
+  const t = String(title ?? "").trim().slice(0, 200);
+  const d = /^\d{4}-\d\d-\d\d$/.test(String(due)) ? String(due) : addDays(parisDay(), 1);
+  if (!t) return { ok: false, message: "devoir vide" };
+  const subj = SUBJECTS.find((s) => s.toLowerCase() === String(subject).toLowerCase()) ?? "Autre";
+  await store.addHomework({ subject: subj, title: t, due: d, done: false });
+  return { ok: true, message: `devoir de ${subj} ajouté` };
+}
 
 type Part = { text?: string; functionCall?: { name: string; args: Record<string, unknown> }; functionResponse?: unknown };
 type Content = { role: "user" | "model"; parts: Part[] };
@@ -98,6 +115,24 @@ const TOOLS = [
         },
       },
       {
+        name: "ajouter_tache",
+        description: "Ajoute une tâche à la to-do list de Thomas.",
+        parameters: { type: "OBJECT", properties: { intitule: { type: "STRING" } }, required: ["intitule"] },
+      },
+      {
+        name: "ajouter_devoir",
+        description: "Ajoute un devoir à rendre (DM, exercices, lecture…) à la liste des devoirs.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            matiere: { type: "STRING", enum: [...SUBJECTS] },
+            intitule: { type: "STRING", description: "Le travail à faire" },
+            date: { type: "STRING", description: "Date de rendu au format AAAA-MM-JJ" },
+          },
+          required: ["matiere", "intitule", "date"],
+        },
+      },
+      {
         name: "enregistrer_coucher",
         description: "Enregistre que Thomas va se coucher maintenant. À appeler à la fin du bilan du soir.",
         parameters: { type: "OBJECT", properties: {} },
@@ -110,12 +145,12 @@ async function runTool(name: string, args: Record<string, unknown>): Promise<Too
   if (name === "enregistrer_travail") return logWork(String(args.matiere), Number(args.minutes));
   if (name === "enregistrer_sport") return logSport(String(args.activite), Number(args.minutes));
   if (name === "enregistrer_coucher") return logBedtime();
+  if (name === "ajouter_tache") return addTask(String(args.intitule ?? ""));
+  if (name === "ajouter_devoir") return addHomeworkTool(String(args.matiere), String(args.intitule ?? ""), String(args.date ?? ""));
   return { ok: false, message: "outil inconnu" };
 }
 
 async function gemini(messages: ChatMsg[], mode: "bilan" | "libre", s: Summary): Promise<JarvisReply> {
-  const key = process.env.GEMINI_API_KEY!;
-  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
   const contents: Content[] = [
     { role: "user", parts: [{ text: mode === "bilan" ? "[Le bilan de 23 h commence. Ouvre la conversation.]" : "[Thomas ouvre Jarvis.]" }] },
     ...messages.map<Content>((m) => ({ role: m.role === "jarvis" ? "model" : "user", parts: [{ text: m.text }] })),
@@ -125,22 +160,14 @@ async function gemini(messages: ChatMsg[], mode: "bilan" | "libre", s: Summary):
   let bedtime = false;
 
   for (let round = 0; round < 5; round++) {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-goog-api-key": key },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: system }] },
-          contents,
-          tools: TOOLS,
-          generationConfig: { temperature: 0.6, maxOutputTokens: 400 },
-        }),
-      }
-    );
-    if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 300)}`);
-    const data = await res.json();
-    const parts: Part[] = data?.candidates?.[0]?.content?.parts ?? [];
+    const data = await generate({
+      systemInstruction: { parts: [{ text: system }] },
+      contents,
+      tools: TOOLS,
+      // Room for the model's hidden reasoning, so the spoken reply is never cut short.
+      generationConfig: { temperature: 0.6, maxOutputTokens: 2000 },
+    });
+    const parts = (data?.candidates?.[0]?.content?.parts ?? []) as Part[];
     const calls = parts.filter((p) => p.functionCall);
     if (!calls.length) {
       const text = parts.map((p) => p.text ?? "").join("").trim();
