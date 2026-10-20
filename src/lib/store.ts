@@ -51,6 +51,17 @@ export const dbUrl = () => {
   return name ? process.env[name]! : "";
 };
 
+/** Database sessions that are busy or waiting (for the diagnostic page). */
+export async function busySessions(): Promise<string[]> {
+  const rows = await q(
+    (s) => s`select pid, state, wait_event_type as w, now() - query_start as age, left(query, 70) as query
+      from pg_stat_activity
+      where datname = current_database() and pid <> pg_backend_pid()
+        and state is not null and state <> 'idle'`
+  );
+  return rows.map((r) => `${r.pid} ${r.state} ${r.w ?? ""} ${String(r.age)} ${r.query}`);
+}
+
 /** Runs a trivial query; used by the diagnostic page. */
 export async function pingDb(): Promise<void> {
   await q((s) => s`select 1`);
@@ -91,25 +102,40 @@ async function q<T>(fn: (s: postgres.Sql) => Promise<T>): Promise<T> {
 }
 
 // Tables are created automatically on first use: nothing to paste in Supabase.
+const TABLES: Record<string, string> = {
+  work_sessions:
+    "create table if not exists work_sessions (id text primary key, subject text not null, start timestamptz not null, minutes integer not null)",
+  sleep_logs: "create table if not exists sleep_logs (id text primary key, bed timestamptz not null, wake timestamptz)",
+  sport_sessions:
+    "create table if not exists sport_sessions (id text primary key, day date not null, activity text not null, minutes integer not null)",
+  app_settings: "create table if not exists app_settings (id integer primary key, data jsonb not null)",
+  push_subscriptions: "create table if not exists push_subscriptions (endpoint text primary key, data jsonb not null)",
+};
+
 async function ensureSchema(s: postgres.Sql) {
-  // Already set up? Then skip the DDL (it takes locks).
-  const [row] = await s`select to_regclass('public.push_subscriptions') is not null as ok`;
-  if (row?.ok) return;
-  await s`create table if not exists work_sessions (
-    id text primary key, subject text not null,
-    start timestamptz not null, minutes integer not null)`;
-  await s`create table if not exists sleep_logs (
-    id text primary key, bed timestamptz not null, wake timestamptz)`;
-  await s`create table if not exists sport_sessions (
-    id text primary key, day date not null,
-    activity text not null, minutes integer not null)`;
-  await s`create table if not exists app_settings (
-    id integer primary key, data jsonb not null)`;
-  await s`create table if not exists push_subscriptions (
-    endpoint text primary key, data jsonb not null)`;
-  // Only the server talks to the database: lock tables against the public API.
-  for (const t of ["work_sessions", "sleep_logs", "sport_sessions", "app_settings", "push_subscriptions"]) {
-    await s.unsafe(`alter table ${t} enable row level security`);
+  const names = Object.keys(TABLES);
+  // Which tables exist, and is row level security already on?
+  const rows = await s`select c.relname as name, c.relrowsecurity as rls
+    from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname in ${s(names)}`;
+  const have = new Map(rows.map((r) => [r.name as string, r.rls as boolean]));
+  const missing = names.filter((n) => !have.has(n));
+  const noRls = names.filter((n) => have.get(n) !== true);
+  if (!missing.length && !noRls.length) return;
+
+  // DDL takes locks: never wait more than a few seconds for them.
+  await s.begin(async (t) => {
+    await t`set local lock_timeout = '5s'`;
+    for (const n of missing) await t.unsafe(TABLES[n]);
+  });
+  try {
+    // Only the server talks to the database: lock tables against Supabase's public API.
+    await s.begin(async (t) => {
+      await t`set local lock_timeout = '5s'`;
+      for (const n of noRls) await t.unsafe(`alter table ${n} enable row level security`);
+    });
+  } catch (e) {
+    console.error("RLS not enabled yet", e);
   }
 }
 

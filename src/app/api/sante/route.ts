@@ -1,6 +1,6 @@
 import { connection } from "next/server";
 import { getSummary } from "@/lib/stats";
-import { dbEnvName, pingDb, store } from "@/lib/store";
+import { busySessions, dbEnvName, pingDb, store } from "@/lib/store";
 
 const clean = (e: unknown) =>
   String((e as Error)?.stack ?? e)
@@ -36,12 +36,14 @@ export async function GET() {
   } else {
     checks.base = "non configurée";
   }
+  const sessions = dbEnvName() ? await busySessions().catch((e) => [clean(e)]) : [];
   const s = await store.getSettings().catch(() => null);
   return Response.json({
     jarvis: "en ligne",
     variable_utilisee: dbEnvName(),
     code_cree: s ? Boolean(s.passwordHash) : null,
     checks,
+    sessions_actives: sessions,
     gemini: Boolean(process.env.GEMINI_API_KEY),
   });
 }
