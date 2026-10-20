@@ -14,6 +14,9 @@ const plexMono = IBM_Plex_Mono({
   weight: ["400", "500"],
 });
 
+// Everything is personal and live: never prerender pages at build time.
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Jarvis",
   description: "Assistant personnel : travail, sommeil, sport.",

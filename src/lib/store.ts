@@ -69,7 +69,7 @@ function pg(): postgres.Sql {
     const url = new URL(dbUrl());
     const local = ["localhost", "127.0.0.1"].includes(url.hostname);
     url.search = "";
-    sql = postgres(url.toString(), { prepare: false, max: 3, idle_timeout: 20, connect_timeout: 10, onnotice: () => {}, ssl: local ? false : "require" });
+    sql = postgres(url.toString(), { prepare: false, max: 1, idle_timeout: 20, connect_timeout: 10, onnotice: () => {}, ssl: local ? false : "require" });
   }
   return sql;
 }
@@ -79,6 +79,9 @@ async function ensureSchema() {
   if (!ready) {
     const s = pg();
     ready = (async () => {
+      // Already set up? Then skip the DDL (it takes locks).
+      const [row] = await s`select to_regclass('public.push_subscriptions') is not null as ok`;
+      if (row?.ok) return;
       await s`create table if not exists work_sessions (
         id text primary key, subject text not null,
         start timestamptz not null, minutes integer not null)`;
@@ -245,5 +248,18 @@ const fileStore: Store = {
   deletePush: (endpoint) => edit((db) => void (db.push = db.push.filter((x) => x.endpoint !== endpoint))),
 };
 
-export const store: Store = dbUrl() ? pgStore : fileStore;
+// Never hang forever on the database: fail after 15 s with a clear message.
+function withTimeout(st: Store): Store {
+  const out = {} as Record<string, unknown>;
+  for (const [name, fn] of Object.entries(st)) {
+    out[name] = (...args: unknown[]) =>
+      Promise.race([
+        (fn as (...a: unknown[]) => Promise<unknown>)(...args),
+        new Promise((_, rej) => setTimeout(() => rej(new Error(`Base de données : ${name} bloqué plus de 15 s`)), 15000)),
+      ]);
+  }
+  return out as unknown as Store;
+}
+
+export const store: Store = dbUrl() ? withTimeout(pgStore) : fileStore;
 export const hasDatabase = () => Boolean(dbUrl());
