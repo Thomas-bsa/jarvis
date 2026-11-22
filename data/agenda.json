@@ -1,0 +1,616 @@
+{
+"source": "Google Agenda",
+"updated": "2026-11-22",
+"until": "2026-12-18",
+"events": [
+{
+"date": "2026-11-23",
+"start": "08:00",
+"end": "09:50",
+"title": "Physique",
+"kind": "cours"
+},
+{
+"date": "2026-11-23",
+"start": "10:10",
+"end": "12:00",
+"title": "SI",
+"kind": "cours"
+},
+{
+"date": "2026-11-23",
+"start": "12:05",
+"end": "13:00",
+"title": "TIPE",
+"kind": "cours"
+},
+{
+"date": "2026-11-23",
+"start": "14:00",
+"end": "15:50",
+"title": "TD SI",
+"kind": "cours"
+},
+{
+"date": "2026-11-23",
+"start": "16:05",
+"end": "17:55",
+"title": "TP Info",
+"kind": "cours"
+},
+{
+"date": "2026-11-24",
+"start": "08:00",
+"end": "10:20",
+"title": "Maths",
+"kind": "cours"
+},
+{
+"date": "2026-11-24",
+"start": "10:35",
+"end": "12:25",
+"title": "TP Physique",
+"kind": "cours"
+},
+{
+"date": "2026-11-24",
+"start": "13:00",
+"end": "15:20",
+"title": "TP SI",
+"kind": "cours"
+},
+{
+"date": "2026-11-24",
+"start": "15:30",
+"end": "16:30",
+"title": "Colle Maths",
+"kind": "colle"
+},
+{
+"date": "2026-11-25",
+"start": "08:00",
+"end": "09:50",
+"title": "Français/Philo",
+"kind": "cours"
+},
+{
+"date": "2026-11-25",
+"start": "10:10",
+"end": "12:00",
+"title": "Maths",
+"kind": "cours"
+},
+{
+"date": "2026-11-25",
+"start": "13:00",
+"end": "14:50",
+"title": "TD SI",
+"kind": "cours"
+},
+{
+"date": "2026-11-25",
+"start": "15:05",
+"end": "16:55",
+"title": "TD Maths",
+"kind": "cours"
+},
+{
+"date": "2026-11-25",
+"start": "18:00",
+"end": "19:00",
+"title": "Colle Physique",
+"kind": "colle"
+},
+{
+"date": "2026-11-26",
+"start": "08:00",
+"end": "09:50",
+"title": "Maths",
+"kind": "cours"
+},
+{
+"date": "2026-11-26",
+"start": "10:10",
+"end": "12:00",
+"title": "Physique",
+"kind": "cours"
+},
+{
+"date": "2026-11-26",
+"start": "12:35",
+"end": "14:25",
+"title": "TD SI",
+"kind": "cours"
+},
+{
+"date": "2026-11-26",
+"start": "14:35",
+"end": "15:30",
+"title": "TD Physique",
+"kind": "cours"
+},
+{
+"date": "2026-11-26",
+"start": "15:30",
+"end": "16:25",
+"title": "TD Maths",
+"kind": "cours"
+},
+{
+"date": "2026-11-26",
+"start": "18:00",
+"end": "19:00",
+"title": "Colle Français",
+"kind": "colle"
+},
+{
+"date": "2026-11-27",
+"start": "08:00",
+"end": "09:50",
+"title": "Anglais",
+"kind": "cours"
+},
+{
+"date": "2026-11-27",
+"start": "10:10",
+"end": "12:00",
+"title": "Physique",
+"kind": "cours"
+},
+{
+"date": "2026-11-27",
+"start": "13:00",
+"end": "17:00",
+"title": "DS Anglais + Info",
+"kind": "ds"
+},
+{
+"date": "2026-11-30",
+"start": "08:00",
+"end": "09:50",
+"title": "Physique",
+"kind": "cours"
+},
+{
+"date": "2026-11-30",
+"start": "10:10",
+"end": "12:00",
+"title": "SI",
+"kind": "cours"
+},
+{
+"date": "2026-11-30",
+"start": "12:05",
+"end": "13:00",
+"title": "TIPE",
+"kind": "cours"
+},
+{
+"date": "2026-11-30",
+"start": "16:05",
+"end": "17:55",
+"title": "TD SI",
+"kind": "cours"
+},
+{
+"date": "2026-12-01",
+"start": "08:00",
+"end": "10:20",
+"title": "Maths",
+"kind": "cours"
+},
+{
+"date": "2026-12-01",
+"start": "10:25",
+"end": "11:25",
+"title": "Colle Anglais",
+"kind": "colle"
+},
+{
+"date": "2026-12-01",
+"start": "11:25",
+"end": "12:25",
+"title": "Colle SI",
+"kind": "colle"
+},
+{
+"date": "2026-12-01",
+"start": "13:30",
+"end": "15:20",
+"title": "TP Physique",
+"kind": "cours"
+},
+{
+"date": "2026-12-01",
+"start": "15:30",
+"end": "17:50",
+"title": "TP SI",
+"kind": "cours"
+},
+{
+"date": "2026-12-02",
+"start": "08:00",
+"end": "09:50",
+"title": "Français/Philo",
+"kind": "cours"
+},
+{
+"date": "2026-12-02",
+"start": "10:10",
+"end": "12:00",
+"title": "Maths",
+"kind": "cours"
+},
+{
+"date": "2026-12-02",
+"start": "13:00",
+"end": "14:50",
+"title": "TD Maths",
+"kind": "cours"
+},
+{
+"date": "2026-12-02",
+"start": "15:05",
+"end": "16:55",
+"title": "TD SI",
+"kind": "cours"
+},
+{
+"date": "2026-12-03",
+"start": "08:00",
+"end": "09:50",
+"title": "Maths",
+"kind": "cours"
+},
+{
+"date": "2026-12-03",
+"start": "10:10",
+"end": "12:00",
+"title": "Physique",
+"kind": "cours"
+},
+{
+"date": "2026-12-03",
+"start": "12:35",
+"end": "13:30",
+"title": "TD Physique",
+"kind": "cours"
+},
+{
+"date": "2026-12-03",
+"start": "13:30",
+"end": "14:25",
+"title": "TD Maths",
+"kind": "cours"
+},
+{
+"date": "2026-12-03",
+"start": "14:35",
+"end": "16:25",
+"title": "TD SI",
+"kind": "cours"
+},
+{
+"date": "2026-12-04",
+"start": "08:00",
+"end": "09:50",
+"title": "Anglais",
+"kind": "cours"
+},
+{
+"date": "2026-12-04",
+"start": "10:10",
+"end": "12:00",
+"title": "Info",
+"kind": "cours"
+},
+{
+"date": "2026-12-04",
+"start": "13:00",
+"end": "17:00",
+"title": "DS Physique",
+"kind": "ds"
+},
+{
+"date": "2026-12-07",
+"start": "08:00",
+"end": "09:50",
+"title": "Physique",
+"kind": "cours"
+},
+{
+"date": "2026-12-07",
+"start": "10:10",
+"end": "12:00",
+"title": "SI",
+"kind": "cours"
+},
+{
+"date": "2026-12-07",
+"start": "12:05",
+"end": "13:00",
+"title": "TIPE",
+"kind": "cours"
+},
+{
+"date": "2026-12-07",
+"start": "13:30",
+"end": "14:30",
+"title": "Colle Physique",
+"kind": "colle"
+},
+{
+"date": "2026-12-07",
+"start": "16:05",
+"end": "17:55",
+"title": "TD SI",
+"kind": "cours"
+},
+{
+"date": "2026-12-08",
+"start": "08:00",
+"end": "10:20",
+"title": "Maths",
+"kind": "cours"
+},
+{
+"date": "2026-12-08",
+"start": "10:35",
+"end": "12:55",
+"title": "TP SI",
+"kind": "cours"
+},
+{
+"date": "2026-12-08",
+"start": "15:30",
+"end": "17:20",
+"title": "TP Physique",
+"kind": "cours"
+},
+{
+"date": "2026-12-09",
+"start": "08:00",
+"end": "09:50",
+"title": "Français/Philo",
+"kind": "cours"
+},
+{
+"date": "2026-12-09",
+"start": "10:10",
+"end": "12:00",
+"title": "Maths",
+"kind": "cours"
+},
+{
+"date": "2026-12-09",
+"start": "13:00",
+"end": "14:50",
+"title": "TD Maths",
+"kind": "cours"
+},
+{
+"date": "2026-12-09",
+"start": "15:05",
+"end": "16:55",
+"title": "TD SI",
+"kind": "cours"
+},
+{
+"date": "2026-12-09",
+"start": "18:00",
+"end": "19:00",
+"title": "Colle Maths",
+"kind": "colle"
+},
+{
+"date": "2026-12-10",
+"start": "08:00",
+"end": "09:50",
+"title": "Maths",
+"kind": "cours"
+},
+{
+"date": "2026-12-10",
+"start": "10:10",
+"end": "12:00",
+"title": "Physique",
+"kind": "cours"
+},
+{
+"date": "2026-12-10",
+"start": "12:35",
+"end": "13:30",
+"title": "TD Physique",
+"kind": "cours"
+},
+{
+"date": "2026-12-10",
+"start": "13:30",
+"end": "14:25",
+"title": "TD Maths",
+"kind": "cours"
+},
+{
+"date": "2026-12-10",
+"start": "14:35",
+"end": "16:25",
+"title": "TD SI",
+"kind": "cours"
+},
+{
+"date": "2026-12-11",
+"start": "08:00",
+"end": "09:50",
+"title": "Anglais",
+"kind": "cours"
+},
+{
+"date": "2026-12-11",
+"start": "10:10",
+"end": "12:00",
+"title": "Physique",
+"kind": "cours"
+},
+{
+"date": "2026-12-11",
+"start": "13:00",
+"end": "17:00",
+"title": "DS SI",
+"kind": "ds"
+},
+{
+"date": "2026-12-14",
+"start": "08:00",
+"end": "09:50",
+"title": "Physique",
+"kind": "cours"
+},
+{
+"date": "2026-12-14",
+"start": "10:10",
+"end": "12:00",
+"title": "SI",
+"kind": "cours"
+},
+{
+"date": "2026-12-14",
+"start": "12:05",
+"end": "13:00",
+"title": "TIPE",
+"kind": "cours"
+},
+{
+"date": "2026-12-14",
+"start": "14:00",
+"end": "15:50",
+"title": "TD SI",
+"kind": "cours"
+},
+{
+"date": "2026-12-14",
+"start": "16:05",
+"end": "17:55",
+"title": "TP Info",
+"kind": "cours"
+},
+{
+"date": "2026-12-15",
+"start": "08:00",
+"end": "10:20",
+"title": "Maths",
+"kind": "cours"
+},
+{
+"date": "2026-12-15",
+"start": "10:25",
+"end": "11:25",
+"title": "Colle Anglais",
+"kind": "colle"
+},
+{
+"date": "2026-12-15",
+"start": "11:25",
+"end": "12:25",
+"title": "Colle SI",
+"kind": "colle"
+},
+{
+"date": "2026-12-15",
+"start": "13:30",
+"end": "15:20",
+"title": "TP Physique",
+"kind": "cours"
+},
+{
+"date": "2026-12-15",
+"start": "15:30",
+"end": "17:50",
+"title": "TP SI",
+"kind": "cours"
+},
+{
+"date": "2026-12-16",
+"start": "08:00",
+"end": "09:50",
+"title": "Français/Philo",
+"kind": "cours"
+},
+{
+"date": "2026-12-16",
+"start": "10:10",
+"end": "12:00",
+"title": "Maths",
+"kind": "cours"
+},
+{
+"date": "2026-12-16",
+"start": "13:00",
+"end": "14:50",
+"title": "TD SI",
+"kind": "cours"
+},
+{
+"date": "2026-12-16",
+"start": "15:05",
+"end": "16:55",
+"title": "TD Maths",
+"kind": "cours"
+},
+{
+"date": "2026-12-17",
+"start": "08:00",
+"end": "09:50",
+"title": "Maths",
+"kind": "cours"
+},
+{
+"date": "2026-12-17",
+"start": "10:10",
+"end": "12:00",
+"title": "Physique",
+"kind": "cours"
+},
+{
+"date": "2026-12-17",
+"start": "12:35",
+"end": "14:25",
+"title": "TD SI",
+"kind": "cours"
+},
+{
+"date": "2026-12-17",
+"start": "14:35",
+"end": "15:30",
+"title": "TD Physique",
+"kind": "cours"
+},
+{
+"date": "2026-12-17",
+"start": "15:30",
+"end": "16:25",
+"title": "TD Maths",
+"kind": "cours"
+},
+{
+"date": "2026-12-18",
+"start": "08:00",
+"end": "09:50",
+"title": "Anglais",
+"kind": "cours"
+},
+{
+"date": "2026-12-18",
+"start": "10:10",
+"end": "12:00",
+"title": "Info",
+"kind": "cours"
+},
+{
+"date": "2026-12-18",
+"start": "13:00",
+"end": "17:00",
+"title": "DS Maths",
+"kind": "ds"
+}
+]
+}

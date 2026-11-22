@@ -1745,7 +1745,7 @@ function renderPlanSide(){
     const label = n === today ? "Aujourd'hui" : n === today + 1 ? "Demain" : capFirst(fmtDate(n, {weekday: "long"}));
     const total = bs.reduce((s, b) => s + Math.max(0, toMin(b.end) - toMin(b.start)), 0);
     return `<div class="pday ${n === today ? "is-today" : ""}"><div class="pday-h"><b>${label}</b><span>${fmtDate(n, {day: "numeric", month: "short"})}</span>${total ? `<em class="num">${fmtDur(total * MIN)}</em>` : ""}</div>
-      ${dueT.map(t => `<div class="pdue">${ic("flag")}À rendre : ${esc(t.title)}</div>`).join("")}
+      ${agendaLine(n)}${dueT.map(t => `<div class="pdue">${ic("flag")}À rendre : ${esc(t.title)}</div>`).join("")}
       ${bs.length ? bs.map(b => { const past = n === today && toMin(b.end) < nowM; const nowB = n === today && toMin(b.start) <= nowM && nowM < toMin(b.end);
         return `<div class="blk ${b.done ? "done" : ""} ${past ? "past" : ""} ${nowB ? "now" : ""}" style="--c:${subjColor(b.subject)}"><button class="chk" data-bdone="${b.id}" aria-label="${b.done ? "Marquer comme à faire" : "Marquer comme fait"}">${b.done ? ic("check") : ""}</button><span class="t num">${b.start}<small>${b.end}</small></span><span class="nm">${esc(b.title)}<small>${esc(b.subject || "")}${nowB ? " · en cours" : ""}${b.subject === "Révisions" ? ` · <button class="lnk" data-brev style="font-size:inherit;padding:0">réviser</button>` : ""}</small></span><button class="x" data-bdel="${b.id}" aria-label="Supprimer le créneau">${ic("x")}</button></div>`; }).join("")
         : `<p class="pempty">${n === today ? "Rien de prévu." : "Libre."}</p>`}</div>`;
@@ -3148,6 +3148,7 @@ async function webInit(){
   try { (await idbAll()).forEach(a => { localUrls[a.id] = URL.createObjectURL(a.blob); }); } catch(e){}
   assets = localAssets; downloads = localDownloads; sample = gemKey() ? geminiSample : null;
   try { JB = await import("./brain.js"); } catch(e){ console.error(e); }
+  try { const r = await fetch("data/agenda.json", {cache: "no-cache"}); if (r.ok) AGENDA = (await r.json()).events || []; } catch(e){}
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 }
 
@@ -3169,7 +3170,7 @@ function replan(){
     const tasks = [...S.tasks.values()].map(t => ({...t, minutes: t.minutes || 60, created: t.createdAt || 0, doneMin: (t.doneMin || 0) + (doneBy[t.id] || 0)}));
     // révisions Centrale : 25 min chaque soir tant qu'il y a des cartes
     if (S.cards.size && S.meta.revDaily !== false) for (let i = 0; i < 7; i++) tasks.push({id: "rev-" + i, title: "Révisions Centrale", subject: "Révisions", minutes: 25, day: isoDay(today + i), part: "tard", created: 0, done: false, doneMin: blocks.some(b => b.done && b.subject === "Révisions" && dayOfIso(b.date) === today + i) ? 25 : 0});
-    const busy = [...(S.meta.busy || []), ...blocks.filter(b => b.done && dayOfIso(b.date) >= today).map(b => ({day: b.date, from: toMin(b.start), to: toMin(b.end)}))];
+    const busy = [...(S.meta.busy || []), ...AGENDA.filter(e => dayOfIso(e.date) >= today).map(e => ({day: e.date, from: toMin(e.start) - 10, to: toMin(e.end) + (e.end >= "16:00" ? 25 : 10)})), ...blocks.filter(b => b.done && dayOfIso(b.date) >= today).map(b => ({day: b.date, from: toMin(b.start), to: toMin(b.end)}))];
     const P = JB.plan({tasks, busy, settings: {windows: winOf(), maxBlock: S.meta.maxBlock || 90, pause: S.meta.pause ?? 10}}, now, 14);
     // on remplace les créneaux à venir non faits
     blocks.forEach(b => { const d = dayOfIso(b.date); if (!b.done && (d > today || (d === today && toMin(b.end) > nowM))) del("blocks", b.id); });
@@ -3286,6 +3287,8 @@ async function sendToAssistant(text){
   asst.log.push({who: "me", text}); paintLog(); setAState("thinking");
   try {
     if (!JB) JB = await import("./brain.js");
+    const chat = chatReply(text);
+    if (chat){ asst.log.push({who: "ai", text: chat}); paintLog(); renderPlanSide(); setAState("idle"); speak(chat); return; }
     let actions = /^(annule|annuler|retour en arrière|reviens en arrière)[ .!]*$/i.test(text) ? [{op: "undo"}] : null;
     if (!actions) actions = await geminiActions(text);
     if (!actions) actions = JB.understand(text, {}, isoDay(realToday()));
@@ -3386,6 +3389,118 @@ speak = function(text){
     speechSynthesis.speak(u);
   } catch(e){ console.error(e); }
 };
+
+/* ================= emploi du temps (Google Agenda) et conversation naturelle ================= */
+let AGENDA = [];
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const hS = s => JB.sayTime(toMin(s));
+const agendaOf = iso => AGENDA.filter(e => e.date === iso).sort((a, b) => a.start.localeCompare(b.start));
+const SUBJ_W = {Maths: "maths", Physique: "physique", SI: "SI", Anglais: "anglais", "Français": "français", Info: "info", "Anglais + Info": "anglais et info"};
+function evName(e){
+  const m = e.title.match(/^(Colle|DS)\s+(.+)$/); if (!m) return e.title;
+  const sub = SUBJ_W[m[2]] || m[2].toLowerCase();
+  return `${m[1] === "DS" ? "DS" : "colle"} ${/^[aeiouéèh]/i.test(sub) ? "d'" : "de "}${sub}`;
+}
+function agendaLine(n){
+  const ev = agendaOf(isoDay(n)); if (!ev.length) return "";
+  const cours = ev.filter(e => e.kind === "cours"), spec = ev.filter(e => e.kind !== "cours");
+  const parts = [];
+  if (cours.length) parts.push(`Cours ${hS(cours[0].start)} – ${hS(cours[cours.length - 1].end)}`);
+  spec.forEach(e => parts.push(`${capFirst(evName(e))} ${hS(e.start)}`));
+  return `<div class="pdue" style="color:var(--ink-2)">${ic("clock")}${esc(parts.join(" · "))}</div>`;
+}
+function periodOf(h){ return h < 5 ? "nuit" : h < 12 ? "matin" : h < 18 ? "aprem" : "soir"; }
+function hello(){ const h = new Date().getHours(); return h < 5 ? "Vous ne dormez pas, monsieur ?" : h < 12 ? pick(["Bonjour, monsieur.", "Bonjour monsieur, bien dormi ?"]) : h < 18 ? pick(["Bon après-midi, monsieur.", "Rebonjour, monsieur."]) : pick(["Bonsoir, monsieur.", "Bonsoir monsieur, content de vous retrouver."]); }
+function dayStory(n, isToday){
+  const iso = isoDay(n), ev = agendaOf(iso), nowM = new Date().getHours() * 60 + new Date().getMinutes();
+  const cours = ev.filter(e => e.kind === "cours"), spec = ev.filter(e => e.kind !== "cours");
+  const out = [];
+  if (cours.length){
+    const first = cours[0], last = ev[ev.length - 1];
+    if (isToday && toMin(last.end) <= nowM) out.push("Vos cours sont terminés pour aujourd'hui.");
+    else if (isToday && toMin(first.start) <= nowM) out.push(`Vous êtes en cours jusqu'à ${hS(last.end)}.`);
+    else out.push(`${isToday ? "Aujourd'hui, vous" : "Vous"} avez cours de ${hS(first.start)} à ${hS(last.end)}, en commençant par ${first.title.toLowerCase().replace(/^td /, "le TD de ").replace(/^tp /, "le TP de ")}.`.replace("par maths", "par les maths").replace("par physique", "par la physique").replace("par si", "par la SI").replace("par anglais", "par l'anglais").replace("par français/philo", "par le français"));
+  }
+  spec.filter(e => !isToday || toMin(e.end) > nowM).forEach(e => out.push(`${e.kind === "ds" ? "Attention, " : ""}${evName(e)} à ${hS(e.start)}.`.replace(/^./, c => c.toUpperCase())));
+  return out.join(" ");
+}
+function briefing(){
+  replan();
+  const today = realToday(), T = isoDay(today), nowM = new Date().getHours() * 60 + new Date().getMinutes(), h = new Date().getHours();
+  const parts = [hello()];
+  let story = "";
+  if (h < 17) { story = dayStory(today, true); if (story) parts.push(story); else if (!agendaOf(T).length && AGENDA.length) parts.push(pick(["Pas de cours aujourd'hui.", "Aucun cours aujourd'hui, monsieur."])); }
+  const work = [...S.blocks.values()].filter(b => b.date === T && !b.done && toMin(b.end) > nowM).sort((a, b) => a.start.localeCompare(b.start));
+  if (work.length){
+    const tot = work.reduce((s, b) => s + toMin(b.end) - toMin(b.start), 0);
+    const w = [...new Set(work.map(b => b.title))];
+    parts.push(`${h >= 17 ? "Pour ce soir, j'ai prévu" : story ? "Ensuite, j'ai prévu" : "J'ai prévu"} ${JB.sayDur(tot)} de travail : ${w.slice(0, 3).join(", ")}, à partir de ${hS(work[0].start)}.`);
+  } else parts.push(pick(["Rien d'autre n'est prévu aujourd'hui.", "Votre soirée est libre pour l'instant."]));
+  const k = S.ready && S.decks.size ? allCounts() : {n: 0, l: 0, r: 0};
+  const cards = k.n + k.l + k.r;
+  if (cards) parts.push(`${cards} cartes vous attendent dans Centrale${cards > 60 ? ", je vous conseille de commencer par là" : ""}.`);
+  // à venir : colles et DS dans les 3 jours, échéances
+  const soon = [];
+  for (let i = 1; i <= 3; i++) agendaOf(isoDay(today + i)).filter(e => e.kind !== "cours").forEach(e => soon.push(`${evName(e)} ${JB.sayDay(e.date, T)} à ${hS(e.start)}`));
+  [...S.tasks.values()].filter(t => !t.done && t.due && dayOfIso(t.due) - today <= 3 && dayOfIso(t.due) >= today).forEach(t => soon.push(`« ${t.title} » à rendre ${JB.sayDay(t.due, T)}`));
+  if (soon.length) parts.push(`À venir : ${soon.slice(0, 4).join(", ")}.`);
+  const late = (S.meta.late || []);
+  if (late.length) parts.push("Il me manque du temps pour tout caser avant certaines échéances, je vous conseille de libérer un créneau.");
+  if (h >= 17){ const nx = agendaOf(isoDay(today + 1)); if (nx.length) parts.push(`Demain, premier cours à ${hS(nx[0].start)}.`); }
+  return parts.join(" ");
+}
+function moodReply(t){
+  const f = JB.fold(t);
+  if (/(creve|fatigue|epuise|naze|mort|dead|claque|pas dormi|sommeil)/.test(f)) return pick(["Je comprends, monsieur. Les journées de prépa sont longues.", "Noté, monsieur. Ménagez-vous."]) + " Ce soir, faites l'essentiel puis couchez-vous tôt : le sommeil fixe ce que vous apprenez. Si vous voulez, dites-moi « je ne suis pas dispo ce soir » et je décale le reste.";
+  if (/(stresse|angoisse|panique|deborde|sous l'eau|pas le temps|trop de travail|peur)/.test(f)){ const d = [...S.tasks.values()].filter(x => !x.done && x.due).sort((a, b) => a.due.localeCompare(b.due))[0]; return "Respirez, monsieur, on s'en occupe ensemble. " + (d ? `La priorité, c'est « ${d.title} » pour ${JB.sayDay(d.due, isoDay(realToday()))} ; le reste est déjà réparti dans votre planning.` : "Votre planning est à jour, prenez les tâches une par une.") + " Une chose à la fois."; }
+  if (/(mal|nul|pas (bien|top|terrible|ouf)|bof|triste|deprime|galere|rate|loupe)/.test(f)) return pick(["Désolé de l'entendre, monsieur.", "Ce sont des choses qui arrivent, monsieur."]) + " Une mauvaise journée ne définit pas le reste de l'année. Voulez-vous que je vous prépare une soirée plus légère ? Dites-moi simplement ce que vous voulez décaler.";
+  if (/(bien|super|top|nickel|genial|parfait|tranquille|ca va|ok|pas mal|cool|en forme|content)/.test(f)) return pick(["Ravi de l'entendre, monsieur.", "Excellent, monsieur.", "Parfait, profitons-en."]) + " " + pick(["On garde ce rythme.", "C'est le moment idéal pour avancer sur vos révisions.", "Je reste à votre disposition."]);
+  return null;
+}
+function chatReply(text){
+  const f = JB.fold(text).replace(/[!?.,'’-]/g, " ").replace(/\s+/g, " ").trim();
+  const wasAwait = asst.awaitMood; asst.awaitMood = false;
+  if (/^(salut|bonjour|bonsoir|hello|coucou|hey|yo|wesh|re)( jarvis)?( ca va| comment ca va| comment vas tu)?$/.test(f) || f === "jarvis"){
+    const ask = /ca va|comment/.test(f);
+    asst.awaitMood = true;
+    return (ask ? "Je vais très bien, merci monsieur. " : "") + briefing() + " " + pick(["Et vous, comment allez-vous ?", "Comment s'est passée votre journée ?", "Comment vous sentez-vous ?"]);
+  }
+  if (/(resume|briefing|brief|fais moi le point|faire le point|le point sur|comment se (passe|presente) ma journee|ma journee|programme du jour|bilan du jour|quoi de neuf|qu est ce qui m attend)/.test(f) && !/demain|semaine/.test(f)){ asst.awaitMood = !S.meta.moodDay || S.meta.moodDay !== isoDay(realToday()); return briefing() + (asst.awaitMood ? " Au fait, comment allez-vous ?" : ""); }
+  if (/^(et toi |toi )?(ca va|comment ca va|comment vas tu|tu vas bien)( jarvis)?$/.test(f)){ asst.awaitMood = true; return pick(["Parfaitement bien, monsieur, tous les systèmes sont opérationnels. Et vous ?", "Très bien, merci de demander. Et vous, monsieur ?"]); }
+  if (/^(merci|merci beaucoup|thanks|super merci|parfait|genial|top|nickel|cool|ok merci)( jarvis)?$/.test(f)) return pick(["Avec plaisir, monsieur.", "Je vous en prie.", "À votre service, monsieur."]);
+  if (/(bonne nuit|je vais (me coucher|dormir)|je vais au lit|a demain)/.test(f)){
+    const nx = agendaOf(isoDay(realToday() + 1)), k = allCounts(), c = k.n + k.l + k.r;
+    return `Bonne nuit, monsieur.${nx.length ? ` Demain, premier cours à ${hS(nx[0].start)} : ${nx[0].title.toLowerCase()}.` : " Demain, pas de cours de prévu."}${nx.some(e => e.kind !== "cours") ? ` N'oubliez pas : ${nx.filter(e => e.kind !== "cours").map(e => `${evName(e)} à ${hS(e.start)}`).join(", ")}.` : ""} Dormez bien, je m'occupe du reste.`;
+  }
+  if (/(qui es tu|tu es qui|t es qui|presente toi)/.test(f)) return "Je suis Jarvis, votre assistant, monsieur. Je connais votre emploi du temps, je tiens votre liste de tâches, je l'organise dans vos créneaux libres et je garde un œil sur vos révisions Centrale. Dites-moi simplement ce que vous avez à faire.";
+  if (/(quels? cours|j ai cours|mes cours|emploi du temps|edt)/.test(f)){
+    const d = /demain/.test(f) ? realToday() + 1 : /apres demain/.test(f) ? realToday() + 2 : realToday();
+    const st = dayStory(d, d === realToday());
+    return st ? `${capFirst(JB.sayDay(isoDay(d), isoDay(realToday())))}, ${st.charAt(0).toLowerCase() + st.slice(1)}` : `Vous n'avez pas cours ${JB.sayDay(isoDay(d), isoDay(realToday()))}, monsieur.`;
+  }
+  if (/(prochaine colle|mes colles|prochain ds|mes ds|prochain devoir)/.test(f)){
+    const want = /ds|devoir/.test(f) ? "ds" : "colle", T = isoDay(realToday());
+    const ev = AGENDA.filter(e => e.kind === want && e.date >= T).slice(0, 3);
+    return ev.length ? `${want === "ds" ? "Vos prochains DS" : "Vos prochaines colles"} : ${ev.map(e => `${evName(e)} ${JB.sayDay(e.date, T)} à ${hS(e.start)}`).join(", ")}.` : `Je ne vois pas de ${want === "ds" ? "DS" : "colle"} dans votre agenda pour le moment.`;
+  }
+  if (wasAwait || /^(je suis|je me sens|ca va|bof|pas trop|moyen|tranquille|super|bien|nickel|creve|fatigue|stresse)/.test(f)){
+    const m = moodReply(text);
+    if (m){ S.meta = {...S.meta, moodDay: isoDay(realToday())}; saveMeta(); return m; }
+  }
+  return null;
+}
+function maybeGreet(){
+  if (!S.ready || !JB) return;
+  const key = isoDay(realToday()) + "-" + periodOf(new Date().getHours());
+  if (S.meta.lastGreet === key || asst.log.length) return;
+  S.meta = {...S.meta, lastGreet: key}; saveMeta();
+  const askMood = S.meta.moodDay !== isoDay(realToday());
+  const say = briefing() + (askMood ? " " + pick(["Comment allez-vous aujourd'hui ?", "Comment vous sentez-vous ?", "Comment s'est passée votre journée ?"].filter((x, i) => new Date().getHours() >= 17 || i < 2)) : "");
+  asst.awaitMood = askMood;
+  asst.log.push({who: "ai", text: say}); paintLog(); speak(say);
+}
+const _renderPlan = renderPlan;
+renderPlan = function(){ _renderPlan(); setTimeout(maybeGreet, 300); };
 
 boot();
 })();
