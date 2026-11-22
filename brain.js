@@ -276,7 +276,7 @@ export function plan(st, now = new Date(), days = 14) {
         const len = y - x;
         if (len < Math.min(MIN, rem)) { i++; continue; }
         let take = Math.min(rem, maxBlock, len);
-        if (rem - take > 0 && rem - take < MIN) take = Math.max(Math.min(len, rem), Math.min(take, rem - MIN));
+        if (rem - take > 0 && rem - take < MIN) take = rem - MIN >= MIN ? rem - MIN : Math.min(len, rem);
         take = Math.min(take, len, rem);
         blocks.push({ taskId: t.id, day: k, from: x, to: x + take });
         rem -= take;
