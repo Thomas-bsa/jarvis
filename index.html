@@ -3291,10 +3291,18 @@ async function sendToAssistant(text){
     if (!JB) JB = await import("./brain.js");
     const chat = chatReply(text);
     if (chat){ asst.log.push({who: "ai", text: chat}); paintLog(); renderPlanSide(); setAState("idle"); speak(chat); return; }
-    let actions = /^(annule|annuler|retour en arrière|reviens en arrière)[ .!]*$/i.test(text) ? [{op: "undo"}] : null;
-    if (!actions) actions = await geminiActions(text);
-    if (!actions) actions = JB.understand(text, {}, isoDay(realToday()));
-    const say = jarvisStyle(runJarvis(actions) || "C'est noté.");
+    let say = null;
+    if (/^(annule|annuler|retour en arrière|reviens en arrière)[ .!]*$/i.test(text)) say = jarvisStyle(runJarvis([{op: "undo"}]));
+    if (!say){
+      const ai = await llmTurn(text);
+      if (ai){
+        const acts = normActions(ai.actions);
+        let extra = "";
+        if (acts.length){ const r = runJarvis(acts); extra = placementOnly(r); }
+        say = (String(ai.say || "").trim() || (acts.length ? "Très bien, monsieur." : "")) + (extra ? " " + extra : "");
+      }
+    }
+    if (!say) say = jarvisStyle(runJarvis(JB.understand(text, {}, isoDay(realToday()))) || "C'est noté.");
     asst.log.push({who: "ai", text: say}); paintLog(); renderPlanSide();
     setAState("idle"); speak(say);
   } catch(e){
@@ -3610,6 +3618,92 @@ function edtCard(){
 const _planToday = planTodayHtml;
 planTodayHtml = function(){ return edtCard() + _planToday(); };
 document.addEventListener("click", e => { if (e.target.closest("#to-plan2")) go("plan"); });
+
+/* ================= cerveau IA : Gemini (si clé) sinon IA gratuite sans clé (Pollinations) ================= */
+const POLL = "https://text.pollinations.ai/openai";
+let pollNext = 0;
+function ctxText(){
+  const today = realToday(), T = isoDay(today), lines = [];
+  for (let i = 0; i < 7; i++){
+    const iso = isoDay(today + i), d = capFirst(fmtDate(today + i, {weekday: "short", day: "numeric", month: "numeric"}));
+    const ag = agendaOf(iso).map(e => `${e.start}-${e.end} ${e.title}${e.kind !== "cours" ? " [" + e.kind.toUpperCase() + "]" : ""}`);
+    const bl = [...S.blocks.values()].filter(b => b.date === iso).sort((a, b) => a.start.localeCompare(b.start)).map(b => `${b.start}-${b.end} ${b.title}${b.done ? " (fait)" : ""}`);
+    lines.push(`${d} (${iso}) — cours : ${ag.join(" ; ") || "aucun"} — travail prévu : ${bl.join(" ; ") || "rien"}`);
+  }
+  const tasks = [...S.tasks.values()].filter(t => !t.done).map(t => `- ${t.title} (${t.subject || "?"}, ${t.minutes || 60} min${t.due ? ", à finir avant le " + t.due : ""}${t.day ? ", prévu le " + t.day : ""})`);
+  const k = S.ready && S.decks.size ? allCounts() : {n: 0, l: 0, r: 0};
+  return `Nous sommes le ${capFirst(fmtDate(today, {weekday: "long", day: "numeric", month: "long", year: "numeric"}))} (${T}), il est ${hm(new Date().getHours() * 60 + new Date().getMinutes())}.
+EMPLOI DU TEMPS ET PLANNING DES 7 PROCHAINS JOURS :
+${lines.join("\n")}
+TÂCHES EN COURS :
+${tasks.join("\n") || "aucune"}
+CARTES CENTRALE À RÉVISER AUJOURD'HUI : ${k.n + k.l + k.r}
+${S.meta.assistMemo ? "CE QUE THOMAS T'A DIT DE LUI : " + S.meta.assistMemo : ""}`;
+}
+const SYS = () => `Tu es Jarvis, l'assistant personnel vocal de Thomas, étudiant en classe prépa PTSI. Tu parles comme le Jarvis d'Iron Man : un majordome britannique en français, calme, chaleureux, légèrement pince-sans-rire, qui vouvoie Thomas et l'appelle « monsieur ». Thomas te parle à voix haute : son texte vient de la dictée et peut contenir des fautes de reconnaissance, interprète-le intelligemment.
+Ton rôle : discuter naturellement avec lui, prendre en note ce qu'il a à faire et gérer son planning de travail. Le planning est calculé automatiquement à partir de ses tâches : tu n'as qu'à créer, modifier ou terminer des tâches avec les actions ci-dessous.
+
+${ctxText()}
+
+RÈGLES
+- "say" est lu à voix haute : 1 à 3 phrases naturelles, pas de liste, pas de markdown, pas d'emoji, heures écrites « 18 h 30 ». Réponds vraiment à ce qu'il dit (question, humeur, discussion) en t'appuyant sur le contexte ; ne récite pas tout le planning sauf s'il le demande.
+- N'invente jamais de cours, de colle ou de tâche : utilise uniquement le contexte.
+- Quand il dit qu'il a quelque chose à faire, crée une action "add" (estime la durée si elle n'est pas dite : DM 180, révision de DS 120, préparation de colle 60, exercices 60, cours à apprendre 45). "due" = jour où ça doit être fini (date de rendu, de colle ou de DS) ; "day" = jour où il veut le faire ; "time" = heure fixe d'un rendez-vous.
+- S'il dit qu'il n'est pas disponible, utilise "busy". S'il a fini ou avancé une tâche, "done" ou "progress". S'il veut déplacer, "move". S'il veut annuler ta dernière action, "undo".
+- Si une information importante manque, fais une estimation raisonnable et dis-le en une phrase.
+
+RÉPONDS UNIQUEMENT avec un objet JSON :
+{"say":"…","actions":[ … ]}
+Actions possibles :
+{"op":"add","title":"intitulé court","subject":"Maths|Physique|Chimie|SI|Anglais|Français|Info|TIPE|Autre","minutes":90,"due":"AAAA-MM-JJ ou null","day":"AAAA-MM-JJ ou null","time":"HH:MM ou null"}
+{"op":"busy","day":"AAAA-MM-JJ","from":"HH:MM","to":"HH:MM","label":"…"}
+{"op":"done","match":"mots de la tâche"} {"op":"progress","match":"…","minutes":60} {"op":"delete","match":"…"} {"op":"move","match":"…","day":"AAAA-MM-JJ","time":"HH:MM ou null"} {"op":"undo"}
+Si aucune action n'est nécessaire, "actions":[].`;
+function histTurns(){
+  return asst.log.filter(m => m.who !== "sys").slice(-9, -1).map(m => ({role: m.who === "me" ? "user" : "assistant", content: m.text}));
+}
+function parseJSON(t){
+  t = String(t || "").replace(/^```(json)?/m, "").replace(/```\s*$/m, "").trim();
+  try { return JSON.parse(t); } catch(e){ const m = t.match(/\{[\s\S]*\}/); if (m) try { return JSON.parse(m[0]); } catch(e2){} }
+  return null;
+}
+async function llmTurn(text){
+  const sys = SYS(), hist = histTurns();
+  // 1) Gemini si une clé est enregistrée (rapide, quotas larges)
+  if (gemKey()){
+    try { const prompt = sys + "\n\nCONVERSATION RÉCENTE :\n" + hist.map(h => (h.role === "user" ? "Thomas : " : "Jarvis : ") + h.content).join("\n") + "\n\nTHOMAS : " + text; const r = await geminiJSON(prompt, {}); if (r && (r.say || r.actions)) return r; } catch(e){ console.warn(e); }
+  }
+  // 2) IA gratuite sans clé (limite : une réponse toutes les 45 s environ)
+  if (Date.now() < pollNext) return null;
+  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 25000);
+  try {
+    const r = await fetch(POLL, {method: "POST", headers: {"Content-Type": "application/json"}, signal: ctl.signal,
+      body: JSON.stringify({model: "openai", messages: [{role: "system", content: sys}, ...hist, {role: "user", content: text}], response_format: {type: "json_object"}})});
+    pollNext = Date.now() + 46e3;
+    if (r.status === 402 || r.status === 429){ const ra = +r.headers.get("retry-after") || 45; pollNext = Date.now() + ra * 1000; return null; }
+    if (!r.ok) return null;
+    const j = await r.json(), out = parseJSON(((j.choices || [])[0] || {}).message?.content);
+    return out && (out.say || out.actions) ? out : null;
+  } catch(e){ console.warn(e); return null; } finally { clearTimeout(timer); }
+}
+function normActions(list){
+  const T = isoDay(realToday());
+  const hmS = s => typeof s === "string" && /^\d{1,2}:\d{2}$/.test(s) ? toMin(s) : null;
+  const okD = s => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+  return (Array.isArray(list) ? list : []).map(a => {
+    if (!a || typeof a !== "object") return null;
+    if (a.op === "add" && a.title) return {op: "add", title: String(a.title).slice(0, 120), subject: a.subject, minutes: Math.max(10, Math.min(900, +a.minutes || 60)), due: okD(a.due), day: okD(a.day), time: hmS(a.time)};
+    if (a.op === "busy" && okD(a.day)) return {op: "busy", day: a.day, from: hmS(a.from) ?? 0, to: hmS(a.to) ?? 1440, label: a.label};
+    if (["done", "delete", "progress"].includes(a.op) && a.match) return {op: a.op, match: String(a.match), minutes: +a.minutes || 0};
+    if (a.op === "move" && okD(a.day) && a.match) return {op: "move", match: String(a.match), day: a.day, time: hmS(a.time)};
+    if (a.op === "undo") return {op: "undo"};
+    return null;
+  }).filter(Boolean);
+}
+// garde seulement les infos de placement calculées par le planificateur (« Je l'ai mis demain à 18 h »)
+function placementOnly(r){
+  return String(r || "").split("\n").map(l => { const m = l.match(/(Je l'ai (mis|réparti)[^]*)$/); return m ? m[1] : /^Je n'ai pas trouvé|^Attention/.test(l) ? l : ""; }).filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+}
 
 boot();
 })();
