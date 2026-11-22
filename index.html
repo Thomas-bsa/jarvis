@@ -899,7 +899,7 @@ async function boot(){
   claude.use("downloads").then(d => { downloads = d; });
   claude.use("mcp").then(m => { mcpNs = m; if (m) gcalLoad().then(() => { if (view.name === "plan") renderPlanSide(); }); }).catch(() => {});
 }
-async function startLocal(){ S.mode = "local"; loadLocal(); if (!S.decks.size) await seedFromSnapshot(); await webInit(); S.ready = true; refreshSync(); setupFolders(); render(); replan(); if (view.name === "plan") renderPlanSide(); }
+async function startLocal(){ S.mode = "local"; loadLocal(); if (!S.decks.size) await seedFromSnapshot(); await webInit(); S.ready = true; refreshSync(); setupFolders(); render(); replan(); if (/assistant|jarvis/i.test(location.hash)) go("plan"); else if (view.name === "plan") renderPlanSide(); }
 let dataT = null;
 function onData(){
   if (!S.ready && Object.values(S.loaded).every(Boolean)){ S.ready = true; setupFolders(); render(); runImports().then(setupFolders); return; }
