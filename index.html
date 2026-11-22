@@ -3494,7 +3494,8 @@ function chatReply(text){
     const ev = AGENDA.filter(e => e.kind === want && e.date >= T).slice(0, 3);
     return ev.length ? `${want === "ds" ? "Vos prochains DS" : "Vos prochaines colles"} : ${ev.map(e => `${evName(e)} ${JB.sayDay(e.date, T)} à ${hS(e.start)}`).join(", ")}.` : `Je ne vois pas de ${want === "ds" ? "DS" : "colle"} dans votre agenda pour le moment.`;
   }
-  if (wasAwait || /^(je suis|je me sens|ca va|bof|pas trop|moyen|tranquille|super|bien|nickel|creve|fatigue|stresse)/.test(f)){
+  const nw = f.split(" ").length;
+  if ((wasAwait && nw <= 8) || (nw <= 5 && /^(je suis|je me sens|ca va|bof|pas trop|moyen|tranquille|super|bien|nickel|creve|fatigue|stresse)/.test(f))){
     const m = moodReply(text);
     if (m){ S.meta = {...S.meta, moodDay: isoDay(realToday())}; saveMeta(); return m; }
   }
@@ -3702,7 +3703,15 @@ function normActions(list){
 }
 // garde seulement les infos de placement calculées par le planificateur (« Je l'ai mis demain à 18 h »)
 function placementOnly(r){
-  return String(r || "").split("\n").map(l => { const m = l.match(/(Je l'ai (mis|réparti)[^]*)$/); return m ? m[1] : /^Je n'ai pas trouvé|^Attention/.test(l) ? l : ""; }).filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+  const out = [];
+  String(r || "").split("\n").forEach(l => {
+    const t = (l.match(/^C'est noté : (.+?)(?: \(|, )/) || l.match(/^J'ai déplacé « (.+?) »/) || [])[1];
+    const m = l.match(/Je l'ai réparti en (\d+) séances : (.+?)(\.|…)( Attention.*)?$/), m1 = l.match(/Je l'ai mis (.+?)\.( Attention.*)?$/);
+    if (t && m) out.push(`« ${t} » : ${m[1]} séances, ${m[2]}.${m[4] || ""}`);
+    else if (t && m1) out.push(`« ${t} » : ${m1[1]}.${m1[2] || ""}`);
+    else if (/^Je n'ai pas trouvé/.test(l)) out.push(l);
+  });
+  return out.length ? "Au planning : " + out.join(" ") : "";
 }
 
 boot();
