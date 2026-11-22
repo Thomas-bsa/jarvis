@@ -3430,7 +3430,7 @@ function briefing(){
   const today = realToday(), T = isoDay(today), nowM = new Date().getHours() * 60 + new Date().getMinutes(), h = new Date().getHours();
   const parts = [hello()];
   let story = "";
-  if (h < 17) { story = dayStory(today, true); if (story) parts.push(story); else if (!agendaOf(T).length && AGENDA.length) parts.push(pick(["Pas de cours aujourd'hui.", "Aucun cours aujourd'hui, monsieur."])); }
+  if (h < 17) { story = dayStory(today, true); if (story) parts.push(story); else if (!agendaOf(T).length && AGENDA.length) parts.push(pick(["Pas de cours aujourd'hui.", "Aucun cours aujourd'hui."])); }
   const work = [...S.blocks.values()].filter(b => b.date === T && !b.done && toMin(b.end) > nowM).sort((a, b) => a.start.localeCompare(b.start));
   if (work.length){
     const tot = work.reduce((s, b) => s + toMin(b.end) - toMin(b.start), 0);
