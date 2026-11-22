@@ -1,13 +1,12 @@
-# Jarvis — planning vocal
-
-Assistant personnel vocal : tu dis ce que tu as à faire, Jarvis le range dans tes créneaux libres.
+# Centrale — révisions + assistant vocal
 
 **Ouvrir :** https://thomas-bsa.github.io/jarvis/
 
-- Voix : Web Speech API du navigateur (gratuite, aucune clé).
-- Compréhension des dates en français : [chrono-node](https://github.com/wanasit/chrono) (MIT), inclus dans `vendor/`.
-- Planning : échéance la plus proche d'abord, séances de 90 min max avec pauses, dans les créneaux définis dans Réglages.
-- Option : clé Gemini gratuite (Google AI Studio) pour comprendre des phrases plus libres.
-- Données : uniquement dans le navigateur (localStorage). Rien n'est envoyé ni stocké dans ce dépôt.
+Version web autonome de Centrale (cartes de révision type Anki, classeur de cours, tableau de bord) avec l'assistant vocal Jarvis qui organise le planning.
 
-Cette branche `gh-pages` contient seulement le site statique. L'application Next.js est sur `main`.
+- Données : enregistrées dans le navigateur (localStorage + IndexedDB). Au premier lancement, le site charge `data/centrale.json` (cartes et progression au 22/11/2026).
+- Fichiers de cours et schémas : `blob/`.
+- Voix : Web Speech API du navigateur. Dates en français : [chrono-node](https://github.com/wanasit/chrono) (MIT), dans `vendor/`.
+- Option : clé Gemini gratuite (Google AI Studio) pour les phrases libres et la génération de cartes depuis un PDF.
+
+Cette branche `gh-pages` contient uniquement le site statique ; l'application Next.js est sur `main`.

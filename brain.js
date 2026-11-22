@@ -129,7 +129,7 @@ function nextDow(today, dow, allowToday) {
   for (let i = allowToday ? 0 : 1; i < 15; i++) { const k = addDays(today, i); if (fromKey(k).getDay() === dow) return k; }
   return today;
 }
-export const PARTS = { matin: [8 * 60, 12 * 60], midi: [12 * 60, 14 * 60], aprem: [13 * 60 + 30, 18 * 60 + 30], soir: [18 * 60, 23 * 60] };
+export const PARTS = { tard: [20 * 60 + 30, 23 * 60], matin: [8 * 60, 12 * 60], midi: [12 * 60, 14 * 60], aprem: [13 * 60 + 30, 18 * 60 + 30], soir: [18 * 60, 23 * 60] };
 
 const L = "(?<![\\p{L}\\d'])", R = "(?![\\p{L}\\d])";
 const W = (src, fl = "giu") => new RegExp(src.replace(/<</g, L).replace(/>>/g, R), fl);
