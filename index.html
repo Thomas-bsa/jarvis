@@ -3289,7 +3289,7 @@ async function sendToAssistant(text){
     let actions = /^(annule|annuler|retour en arrière|reviens en arrière)[ .!]*$/i.test(text) ? [{op: "undo"}] : null;
     if (!actions) actions = await geminiActions(text);
     if (!actions) actions = JB.understand(text, {}, isoDay(realToday()));
-    const say = runJarvis(actions) || "C'est noté.";
+    const say = jarvisStyle(runJarvis(actions) || "C'est noté.");
     asst.log.push({who: "ai", text: say}); paintLog(); renderPlanSide();
     setAState("idle"); speak(say);
   } catch(e){
@@ -3310,13 +3310,17 @@ function memoModal(){
         <label class="fld"><span class="hint">Pause entre séances (min)</span><input class="input" type="number" id="pz" min="0" max="60" step="5" value="${S.meta.pause ?? 10}"></label>
       </div>
       <label style="display:flex;gap:10px;align-items:center;margin-top:14px"><input type="checkbox" id="rv" ${S.meta.revDaily !== false ? "checked" : ""}> Prévoir 25 min de révisions Centrale chaque soir</label>
+      <p class="hint" style="margin:16px 0 6px"><b>Voix de l'assistant</b></p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><select class="input" id="vn" style="flex:1;min-width:200px">${frVoices().map(v => `<option value="${esc(v.name)}" ${jarvisVoice() && jarvisVoice().name === v.name ? "selected" : ""}>${esc(v.name)}${/enhanced|premium|amélioré/i.test(v.name) ? "" : ""}</option>`).join("") || `<option value="">Voix du système</option>`}</select><button class="btn" type="button" id="vt">${ic("volume")}Écouter</button></div>
       <p class="hint" style="margin:16px 0 6px"><b>Facultatif : clé Gemini gratuite.</b> Sans clé, l'assistant comprend déjà les phrases courantes. Avec une clé <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> (gratuite, sans carte), il comprend les phrases libres et peut générer des cartes depuis tes PDF. La clé reste sur cet appareil.</p>
       <input class="input" id="gk" type="password" autocomplete="off" placeholder="AIza…" value="${esc(gemKey())}">
       <p class="hint" style="margin:16px 0 6px">Ce que l'assistant sait de toi (utilisé avec Gemini) :</p>
       <textarea class="input" id="mm" rows="3" placeholder="Ex. : cours jusqu'à 18 h du lundi au jeudi ; sport mardi soir.">${esc(S.meta.assistMemo || "")}</textarea>`,
     foot: `<button class="btn" data-c>Annuler</button><button class="btn primary" data-ok>Enregistrer</button>`});
   $("[data-c]", m.el).onclick = m.close;
+  $("#vt", m.el).onclick = () => { const prev = S.meta.voiceName; S.meta.voiceName = $("#vn", m.el).value; speak("Bonsoir, monsieur. Tous les systèmes sont opérationnels. Que puis-je faire pour vous ?"); S.meta.voiceName = prev; };
   $("[data-ok]", m.el).onclick = () => {
+    const vn = $("#vn", m.el).value; if (vn) S.meta.voiceName = vn;
     const windows = {}; $$("[data-w]", m.el).forEach(i => { const v = i.value.trim(); windows[i.dataset.w] = !v || (JB && JB.parseWindows(v).length) ? v : (w[i.dataset.w] || ""); });
     S.meta = {...S.meta, windows, maxBlock: Math.max(20, +$("#mb", m.el).value || 90), pause: Math.max(0, +$("#pz", m.el).value || 0), revDaily: $("#rv", m.el).checked, assistMemo: $("#mm", m.el).value.trim()}; saveMeta();
     try { const k = $("#gk", m.el).value.trim(); if (k) localStorage.setItem(GEM_KEY, k); else localStorage.removeItem(GEM_KEY); } catch(e){}
@@ -3341,6 +3345,47 @@ put = function(coll, obj){ const prev = coll === "blocks" ? S.blocks.get(obj.id)
 del = function(coll, id){ _del(coll, id); if (!replanning && S.ready && coll === "tasks") replanSoon(); };
 setInterval(() => { if (S.ready && JB && !document.hidden) { replan(); if (view.name === "plan") renderPlanSide(); } }, 10 * 60e3);
 document.addEventListener("visibilitychange", () => { if (!document.hidden && S.ready && JB) replanSoon(); });
+
+/* ---- voix « Jarvis » : voix masculine posée, ton de majordome ---- */
+const JV_PREF = [/daniel/i, /thomas/i, /henri/i, /paul/i, /nicolas/i, /eddy/i, /reed/i, /rocko/i];
+const frVoices = () => ("speechSynthesis" in window ? speechSynthesis.getVoices() : []).filter(v => /^fr(-|_|$)/i.test(v.lang)).sort((a, b) => /fr.FR/i.test(b.lang) - /fr.FR/i.test(a.lang));
+function jarvisVoice(){
+  const vs = frVoices(); if (!vs.length) return null;
+  if (S.meta.voiceName){ const v = vs.find(x => x.name === S.meta.voiceName); if (v) return v; }
+  const better = v => /enhanced|premium|amélior/i.test(v.name);
+  for (const re of JV_PREF){ const c = vs.filter(v => re.test(v.name)); if (c.length) return c.find(better) || c.find(v => /fr.FR/i.test(v.lang)) || c[0]; }
+  return vs[0];
+}
+function jarvisStyle(t){
+  return String(t)
+    .replace(/^C'est noté : /gm, "Très bien, monsieur. J'ai noté : ")
+    .replace(/^OK, je ne mets rien/gm, "Entendu, monsieur. Je ne prévois rien")
+    .replace(/^Bravo, /gm, "Excellent travail, monsieur : ")
+    .replace(/^Noté, /gm, "Bien noté, monsieur : ")
+    .replace(/^J'ai supprimé/gm, "C'est fait, monsieur. J'ai supprimé")
+    .replace(/^J'ai déplacé/gm, "Très bien, monsieur. J'ai déplacé")
+    .replace(/^C'est annulé\./gm, "C'est annulé, monsieur.")
+    .replace(/^Rien de prévu/gm, "Vous n'avez rien de prévu")
+    .replace(/^Ta semaine : /gm, "Voici votre semaine, monsieur : ")
+    .replace(/^Je n'ai pas bien compris\./gm, "Pardonnez-moi, monsieur, je n'ai pas bien saisi.")
+    .replace(/^Je n'ai pas trouvé/gm, "Pardonnez-moi, monsieur, je n'ai pas trouvé")
+    .replace(/^Tu n'as plus rien à faire\. Profite !/gm, "Vous n'avez plus rien à faire, monsieur. Profitez-en.")
+    .replace(/^Il te reste /gm, "Il vous reste ")
+    .replace(/^(Demain|Aujourd'hui|Après-demain|Lundi|Mardi|Mercredi|Jeudi|Vendredi|Samedi|Dimanche)([^:]*) : /gm, (m, d, r) => `Au programme ${d.toLowerCase()}${r}, monsieur : `);
+}
+pickVoice = jarvisVoice;
+if ("speechSynthesis" in window){ speechSynthesis.onvoiceschanged = () => { asst.voice = jarvisVoice(); }; asst.voice = jarvisVoice(); }
+speak = function(text){
+  if (!speakOn() || !("speechSynthesis" in window) || !text) return;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(String(text).replace(/[*_#`«»]/g, "").replace(/\n/g, ". "));
+    const v = jarvisVoice(); u.lang = v ? v.lang : "fr-FR"; if (v) u.voice = v;
+    u.rate = 1.02; u.pitch = 0.88;
+    u.onstart = () => setAState("speaking"); u.onend = u.onerror = () => { if (asst.state === "speaking") setAState("idle"); };
+    speechSynthesis.speak(u);
+  } catch(e){ console.error(e); }
+};
 
 boot();
 })();
