@@ -676,6 +676,8 @@ h2{font-size:16px;font-weight:600;letter-spacing:-.01em}
 .pempty{margin:0;font-size:12.5px;color:var(--ink-3)}
 .blk{display:grid;grid-template-columns:22px 44px minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:7px 8px;background:var(--surface);border:1px solid var(--line-2);border-left:3px solid var(--c);border-radius:8px}
 .blk.now{box-shadow:0 0 0 2px var(--accent-line)}
+.blk.crs{background:var(--surface-2);border-color:var(--line-2);border-left-color:var(--c)}.blk.crs .nm{font-weight:500}.blk.crs.colle,.blk.crs.ds{background:var(--accent-soft)}.blk.crs .tag2{font-size:10.5px;font-family:var(--f-num);color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em}
+.edt{display:flex;flex-direction:column;gap:6px}.edt .row{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center;padding:7px 10px;border-radius:8px;background:var(--surface-2);border-left:3px solid var(--c)}.edt .row.colle,.edt .row.ds{background:var(--accent-soft)}.edt .row.past{opacity:.5}.edt .row.now{box-shadow:0 0 0 2px var(--accent-line)}.edt .t{font-size:12.5px;color:var(--ink-2);white-space:nowrap}.edt .nm{font-size:14px;font-weight:500}
 .blk.past:not(.done){opacity:.6}
 .blk.done .nm{text-decoration:line-through;color:var(--ink-3)}
 .blk .t{font-size:12px;display:flex;flex-direction:column;line-height:1.2}.blk .t small{color:var(--ink-3);font-size:11px}
@@ -1745,9 +1747,9 @@ function renderPlanSide(){
     const label = n === today ? "Aujourd'hui" : n === today + 1 ? "Demain" : capFirst(fmtDate(n, {weekday: "long"}));
     const total = bs.reduce((s, b) => s + Math.max(0, toMin(b.end) - toMin(b.start)), 0);
     return `<div class="pday ${n === today ? "is-today" : ""}"><div class="pday-h"><b>${label}</b><span>${fmtDate(n, {day: "numeric", month: "short"})}</span>${total ? `<em class="num">${fmtDur(total * MIN)}</em>` : ""}</div>
-      ${agendaLine(n)}${dueT.map(t => `<div class="pdue">${ic("flag")}À rendre : ${esc(t.title)}</div>`).join("")}
-      ${bs.length ? bs.map(b => { const past = n === today && toMin(b.end) < nowM; const nowB = n === today && toMin(b.start) <= nowM && nowM < toMin(b.end);
-        return `<div class="blk ${b.done ? "done" : ""} ${past ? "past" : ""} ${nowB ? "now" : ""}" style="--c:${subjColor(b.subject)}"><button class="chk" data-bdone="${b.id}" aria-label="${b.done ? "Marquer comme à faire" : "Marquer comme fait"}">${b.done ? ic("check") : ""}</button><span class="t num">${b.start}<small>${b.end}</small></span><span class="nm">${esc(b.title)}<small>${esc(b.subject || "")}${nowB ? " · en cours" : ""}${b.subject === "Révisions" ? ` · <button class="lnk" data-brev style="font-size:inherit;padding:0">réviser</button>` : ""}</small></span><button class="x" data-bdel="${b.id}" aria-label="Supprimer le créneau">${ic("x")}</button></div>`; }).join("")
+      ${dueT.map(t => `<div class="pdue">${ic("flag")}À rendre : ${esc(t.title)}</div>`).join("")}
+      ${(bs.length || agendaOf(isoDay(n)).length) ? mergeAgenda(n, bs).map(b => b.__ag ? agendaRow(b, n) : (b => { const past = n === today && toMin(b.end) < nowM; const nowB = n === today && toMin(b.start) <= nowM && nowM < toMin(b.end);
+        return `<div class="blk ${b.done ? "done" : ""} ${past ? "past" : ""} ${nowB ? "now" : ""}" style="--c:${subjColor(b.subject)}"><button class="chk" data-bdone="${b.id}" aria-label="${b.done ? "Marquer comme à faire" : "Marquer comme fait"}">${b.done ? ic("check") : ""}</button><span class="t num">${b.start}<small>${b.end}</small></span><span class="nm">${esc(b.title)}<small>${esc(b.subject || "")}${nowB ? " · en cours" : ""}${b.subject === "Révisions" ? ` · <button class="lnk" data-brev style="font-size:inherit;padding:0">réviser</button>` : ""}</small></span><button class="x" data-bdel="${b.id}" aria-label="Supprimer le créneau">${ic("x")}</button></div>`; })(b)).join("")
         : `<p class="pempty">${n === today ? "Rien de prévu." : "Libre."}</p>`}</div>`;
   };
   const taskRow = t => `<div class="trow ${t.done ? "done" : ""}" style="--c:${subjColor(t.subject)}"><button class="chk" data-tdone="${t.id}" aria-label="${t.done ? "Remettre à faire" : "Marquer comme fait"}">${t.done ? ic("check") : ""}</button><span class="nm">${esc(t.title)}<small><i></i>${esc(t.subject || "Autre")}${t.minutes ? ` · ${fmtDur(t.minutes * MIN)}` : ""}${t.priority === "haute" ? " · prioritaire" : ""}</small></span><span class="due">${dueLbl(t)}</span><button class="x" data-tdel="${t.id}" aria-label="Supprimer la tâche">${ic("x")}</button></div>`;
@@ -3578,6 +3580,36 @@ async function neuralSpeak(text, gen, ctx){
 setTimeout(async () => { try { if (S.meta.voiceEngine === "system") return; VX = VX || await import("./vendor/voix/voix.js"); if (await VX.isDownloaded(S.meta.neuralVoice || "tom")) loadVoix(false); } catch(e){} }, 1500);
 const _renderPlan2 = renderPlan;
 renderPlan = function(){ _renderPlan2(); loadVoix(true); };
+
+/* ---- emploi du temps visible : planning de l'Assistant + tableau de bord ---- */
+const AG_COLOR = t => /maths?/i.test(t) ? "var(--s1)" : /physique/i.test(t) ? "var(--s2)" : /SI\b|TIPE/.test(t) ? "var(--s4)" : /anglais/i.test(t) ? "var(--s6)" : /fran/i.test(t) ? "var(--s5)" : /info/i.test(t) ? "var(--s7)" : "var(--s8)";
+function mergeAgenda(n, bs){
+  const ag = agendaOf(isoDay(n)).map(e => ({...e, __ag: true}));
+  return [...ag, ...bs].sort((a, b) => a.start.localeCompare(b.start));
+}
+function agendaRow(e, n){
+  const nowM = new Date().getHours() * 60 + new Date().getMinutes(), isT = n === realToday();
+  const past = isT && toMin(e.end) <= nowM, now = isT && toMin(e.start) <= nowM && nowM < toMin(e.end);
+  const label = e.kind === "colle" ? "Colle" : e.kind === "ds" ? "DS" : /^TD /.test(e.title) ? "TD" : /^TP /.test(e.title) ? "TP" : "Cours";
+  const name = e.kind === "cours" ? e.title.replace(/^(TD|TP) /, "") : capFirst(evName(e));
+  return `<div class="blk crs ${e.kind} ${past ? "past" : ""} ${now ? "now" : ""}" style="--c:${AG_COLOR(e.title)}"><span></span><span class="t num">${e.start}<small>${e.end}</small></span><span class="nm">${esc(name)}<small><span class="tag2">${label}</span>${now ? " · en cours" : ""}</small></span><span></span><span></span></div>`;
+}
+function edtCard(){
+  if (!AGENDA.length) return "";
+  const today = realToday(), nowM = new Date().getHours() * 60 + new Date().getMinutes();
+  let n = today, ev = agendaOf(isoDay(n));
+  if (!ev.length || toMin(ev[ev.length - 1].end) <= nowM){ for (let i = 1; i <= 7; i++){ const e2 = agendaOf(isoDay(today + i)); if (e2.length){ n = today + i; ev = e2; break; } } }
+  if (!ev.length) return "";
+  const lbl = n === today ? "Aujourd'hui" : n === today + 1 ? "Demain" : capFirst(fmtDate(n, {weekday: "long", day: "numeric", month: "long"}));
+  const rows = ev.map(e => { const isT = n === today, past = isT && toMin(e.end) <= nowM, now = isT && toMin(e.start) <= nowM && nowM < toMin(e.end);
+    const kind = e.kind === "colle" ? "Colle" : e.kind === "ds" ? "DS" : /^TD /.test(e.title) ? "TD" : /^TP /.test(e.title) ? "TP" : "Cours";
+    const name = e.kind === "cours" ? e.title.replace(/^(TD|TP) /, "") : capFirst(evName(e));
+    return `<div class="row ${e.kind} ${past ? "past" : ""} ${now ? "now" : ""}" style="--c:${AG_COLOR(e.title)}"><span class="t num">${e.start} – ${e.end}</span><span class="nm">${esc(name)} <small class="muted" style="font-weight:400;font-size:11.5px">· ${kind}</small></span></div>`; }).join("");
+  return `<article class="box"><div class="box-h" style="margin-bottom:10px"><div><h2>Emploi du temps</h2><span class="s">${lbl}</span></div><button class="lnk" id="to-plan2">Semaine</button></div><div class="edt">${rows}</div></article>`;
+}
+const _planToday = planTodayHtml;
+planTodayHtml = function(){ return edtCard() + _planToday(); };
+document.addEventListener("click", e => { if (e.target.closest("#to-plan2")) go("plan"); });
 
 boot();
 })();
