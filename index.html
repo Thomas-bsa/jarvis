@@ -3314,16 +3314,17 @@ function memoModal(){
       </div>
       <label style="display:flex;gap:10px;align-items:center;margin-top:14px"><input type="checkbox" id="rv" ${S.meta.revDaily !== false ? "checked" : ""}> Prévoir 25 min de révisions Centrale chaque soir</label>
       <p class="hint" style="margin:16px 0 6px"><b>Voix de l'assistant</b></p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><select class="input" id="vn" style="flex:1;min-width:200px">${frVoices().map(v => `<option value="${esc(v.name)}" ${jarvisVoice() && jarvisVoice().name === v.name ? "selected" : ""}>${esc(v.name)}${/enhanced|premium|amélioré/i.test(v.name) ? "" : ""}</option>`).join("") || `<option value="">Voix du système</option>`}</select><button class="btn" type="button" id="vt">${ic("volume")}Écouter</button></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><select class="input" id="vn" style="flex:1;min-width:200px"><optgroup label="Voix naturelles (recommandé)">${NEURAL.map(([k, n]) => `<option value="neural:${k}" ${curVoiceKey() === "neural:" + k ? "selected" : ""}>${n}</option>`).join("")}</optgroup><optgroup label="Voix de l'appareil">${frVoices().map(v => `<option value="sys:${esc(v.name)}" ${curVoiceKey() === "sys:" + v.name ? "selected" : ""}>${esc(v.name)}</option>`).join("")}</optgroup></select><button class="btn" type="button" id="vt">${ic("volume")}Écouter</button></div>
+      <p class="hint" style="margin:6px 0 0">Les voix naturelles sont téléchargées une seule fois (environ 60 Mo) puis fonctionnent même hors ligne.</p>
       <p class="hint" style="margin:16px 0 6px"><b>Facultatif : clé Gemini gratuite.</b> Sans clé, l'assistant comprend déjà les phrases courantes. Avec une clé <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> (gratuite, sans carte), il comprend les phrases libres et peut générer des cartes depuis tes PDF. La clé reste sur cet appareil.</p>
       <input class="input" id="gk" type="password" autocomplete="off" placeholder="AIza…" value="${esc(gemKey())}">
       <p class="hint" style="margin:16px 0 6px">Ce que l'assistant sait de toi (utilisé avec Gemini) :</p>
       <textarea class="input" id="mm" rows="3" placeholder="Ex. : cours jusqu'à 18 h du lundi au jeudi ; sport mardi soir.">${esc(S.meta.assistMemo || "")}</textarea>`,
     foot: `<button class="btn" data-c>Annuler</button><button class="btn primary" data-ok>Enregistrer</button>`});
   $("[data-c]", m.el).onclick = m.close;
-  $("#vt", m.el).onclick = () => { const prev = S.meta.voiceName; S.meta.voiceName = $("#vn", m.el).value; speak("Bonsoir, monsieur. Tous les systèmes sont opérationnels. Que puis-je faire pour vous ?"); S.meta.voiceName = prev; };
+  $("#vt", m.el).onclick = async () => { const prev = {...S.meta}; applyVoiceKey($("#vn", m.el).value); audioCtx(); if (S.meta.voiceEngine === "neural" && !vxReadyFor(S.meta.neuralVoice)){ toast("Chargement de la voix… (la première fois, quelques secondes)", 8000); await loadVoix(false); } speak("Bonsoir, monsieur. Tous les systèmes sont opérationnels. Que puis-je faire pour vous ?"); S.meta = {...S.meta, voiceEngine: prev.voiceEngine, neuralVoice: prev.neuralVoice, voiceName: prev.voiceName}; };
   $("[data-ok]", m.el).onclick = () => {
-    const vn = $("#vn", m.el).value; if (vn) S.meta.voiceName = vn;
+    const vn = $("#vn", m.el).value; if (vn) applyVoiceKey(vn);
     const windows = {}; $$("[data-w]", m.el).forEach(i => { const v = i.value.trim(); windows[i.dataset.w] = !v || (JB && JB.parseWindows(v).length) ? v : (w[i.dataset.w] || ""); });
     S.meta = {...S.meta, windows, maxBlock: Math.max(20, +$("#mb", m.el).value || 90), pause: Math.max(0, +$("#pz", m.el).value || 0), revDaily: $("#rv", m.el).checked, assistMemo: $("#mm", m.el).value.trim()}; saveMeta();
     try { const k = $("#gk", m.el).value.trim(); if (k) localStorage.setItem(GEM_KEY, k); else localStorage.removeItem(GEM_KEY); } catch(e){}
@@ -3501,6 +3502,82 @@ function maybeGreet(){
 }
 const _renderPlan = renderPlan;
 renderPlan = function(){ _renderPlan(); setTimeout(maybeGreet, 300); };
+
+/* ================= voix naturelle (Piper, dans le navigateur) ================= */
+const NEURAL = [["tom", "Tom — homme, posé (Jarvis)"], ["gilles", "Gilles — homme"], ["upmc", "Jessica — femme"], ["siwis", "Siwis — femme"]];
+const curVoiceKey = () => S.meta.voiceEngine === "system" ? "sys:" + ((jarvisVoice() || {}).name || "") : "neural:" + (S.meta.neuralVoice || "tom");
+function applyVoiceKey(k){
+  if (k.startsWith("neural:")) S.meta = {...S.meta, voiceEngine: "neural", neuralVoice: k.slice(7)};
+  else S.meta = {...S.meta, voiceEngine: "system", voiceName: k.slice(4)};
+  if (S.meta.voiceEngine === "neural") loadVoix(false);
+}
+let VX = null, vxVoice = null, vxLoading = null, actx = null, speakGen = 0, liveSrc = [];
+const vxReadyFor = v => vxVoice === (v || "tom");
+function audioCtx(){
+  if (!actx){ const C = window.AudioContext || window.webkitAudioContext; if (C) try { actx = new C(); } catch(e){} }
+  if (actx && actx.state === "suspended") actx.resume().catch(() => {});
+  return actx;
+}
+["pointerdown", "keydown", "touchend"].forEach(ev => document.addEventListener(ev, audioCtx, {capture: true, passive: true}));
+function loadVoix(announce){
+  if (S.meta.voiceEngine === "system") return Promise.resolve(false);
+  const v = S.meta.neuralVoice || "tom";
+  if (vxReadyFor(v)) return Promise.resolve(true);
+  if (vxLoading && vxLoading.v === v) return vxLoading.p;
+  const p = (async () => {
+    try {
+      VX = VX || await import("./vendor/voix/voix.js");
+      if (announce && !(await VX.isDownloaded(v))) toast("Je télécharge ma voix naturelle (60 Mo, une seule fois). En attendant, j'utilise la voix de l'appareil.", 7000);
+      await VX.init(v); vxVoice = v; return true;
+    } catch(e){ console.error(e); return false; } finally { vxLoading = null; }
+  })();
+  vxLoading = {v, p}; return p;
+}
+function ttsText(t){
+  return String(t).replace(/[«»"*_#`]/g, "").replace(/·/g, ",").replace(/\n+/g, ". ")
+    .replace(/\b1 h (\d{2})\b/g, "une heure $1").replace(/\b(\d{1,2}) h (\d{2})\b/g, "$1 heures $2").replace(/\b1 h\b/g, "une heure").replace(/\b(\d{1,2}) h\b/g, "$1 heures")
+    .replace(/\b(\d+) min\b/g, "$1 minutes").replace(/\bDS\b/g, "D.S.").replace(/\bDM\b/g, "D.M.").replace(/\bTD\b/g, "T.D.").replace(/\bTP\b/g, "T.P.").replace(/\bSI\b/g, "S.I.").replace(/\bTIPE\b/g, "Tipe")
+    .replace(/\s+/g, " ").trim();
+}
+function chunks(t){
+  const parts = t.split(/(?<=[.!?;:])\s+/).map(x => x.trim()).filter(Boolean), out = [];
+  for (const p of parts){ if (out.length && (out[out.length - 1].length < 25)) out[out.length - 1] += " " + p; else out.push(p); }
+  // découpe les phrases très longues aux virgules pour démarrer plus vite
+  return out.flatMap(p => p.length > 220 ? p.split(/(?<=,)\s+/).reduce((a, x) => { if (a.length && a[a.length - 1].length < 120) a[a.length - 1] += " " + x; else a.push(x); return a; }, []) : [p]);
+}
+const _sysStop = stopSpeaking;
+stopSpeaking = function(){ speakGen++; liveSrc.forEach(s => { try { s.stop(); } catch(e){} }); liveSrc = []; _sysStop(); };
+const sysSpeak = speak;
+speak = function(text){
+  if (!speakOn() || !text) return;
+  stopSpeaking();
+  const ctx = audioCtx();
+  if (S.meta.voiceEngine !== "system" && ctx && vxReadyFor(S.meta.neuralVoice)) { neuralSpeak(text, ++speakGen, ctx); return; }
+  sysSpeak(text);
+  if (S.meta.voiceEngine !== "system") loadVoix(true);
+};
+async function neuralSpeak(text, gen, ctx){
+  const parts = chunks(ttsText(text)); if (!parts.length) return;
+  setAState("speaking");
+  try {
+    let t = 0, next = VX.synth(parts[0], {speed: 1.03});
+    for (let i = 0; i < parts.length; i++){
+      const r = await next; if (gen !== speakGen) return;
+      if (i + 1 < parts.length) next = VX.synth(parts[i + 1], {speed: 1.03});
+      const buf = ctx.createBuffer(1, r.samples.length, r.rate); buf.copyToChannel(r.samples, 0);
+      const src = ctx.createBufferSource(); src.buffer = buf; src.playbackRate.value = 0.97;
+      const g = ctx.createGain(); g.gain.value = 1.15; src.connect(g); g.connect(ctx.destination);
+      t = Math.max(t, ctx.currentTime + 0.03); src.start(t); liveSrc.push(src);
+      t += buf.duration / 0.97 + (/[.!?]$/.test(parts[i]) ? 0.22 : 0.1);
+    }
+    const wait = Math.max(0, (t - ctx.currentTime) * 1000);
+    setTimeout(() => { if (gen === speakGen && asst.state === "speaking") setAState("idle"); }, wait);
+  } catch(e){ console.error(e); if (gen === speakGen){ setAState("idle"); sysSpeak(text); } }
+}
+// voix déjà téléchargée : on la prépare dès l'ouverture ; sinon au premier passage dans l'Assistant
+setTimeout(async () => { try { if (S.meta.voiceEngine === "system") return; VX = VX || await import("./vendor/voix/voix.js"); if (await VX.isDownloaded(S.meta.neuralVoice || "tom")) loadVoix(false); } catch(e){} }, 1500);
+const _renderPlan2 = renderPlan;
+renderPlan = function(){ _renderPlan2(); loadVoix(true); };
 
 boot();
 })();

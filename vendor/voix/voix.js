@@ -16,7 +16,7 @@ let ortP = null, session = null, config = null, current = null, loading = null;
 
 function loadOrt(){
   if (window.ort) return Promise.resolve(window.ort);
-  return ortP || (ortP = new Promise((res, rej) => { const s = document.createElement("script"); s.src = ORT + "ort.min.js"; s.onload = () => res(window.ort); s.onerror = () => rej(new Error("onnxruntime indisponible")); document.head.appendChild(s); }));
+  return ortP || (ortP = new Promise((res, rej) => { const s = document.createElement("script"); s.src = ORT + "ort.min.js"; s.onload = () => res(window.ort); s.onerror = () => { ortP = null; s.remove(); rej(new Error("onnxruntime indisponible")); }; document.head.appendChild(s); }));
 }
 async function cached(url, onProgress){
   let cache = null; try { cache = await caches.open(CACHE); const hit = await cache.match(url); if (hit) return await hit.arrayBuffer(); } catch(e){}
@@ -60,7 +60,9 @@ function phonemize(text){
   });
 }
 /** Synthétise une phrase : renvoie {samples: Float32Array, rate} */
-export async function synth(text, {speed = 1} = {}){
+let lock = Promise.resolve();
+export function synth(text, opts){ const run = lock.then(() => synth1(text, opts)); lock = run.catch(() => {}); return run; }
+async function synth1(text, {speed = 1} = {}){
   if (!session) throw new Error("voix non chargée");
   const ort = window.ort, ids = await phonemize(text.trim());
   const inf = config.inference || {};
