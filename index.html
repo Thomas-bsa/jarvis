@@ -920,6 +920,7 @@ async function runImports(){
     for (const doc of todo){
       const d = doc.data(), deck = ensureDeck(d.deck);
       if (!deck) continue;
+      if (d.replaces) [...S.notes.keys()].filter(id => id.startsWith("imp-" + d.replaces + "-")).forEach(deleteNote);
       if (d.desc && !deck.desc) put("decks", {...deck, desc: d.desc});
       if (d.pdf && d.pdf.assetId && ![...S.pdfs.values()].some(p => p.assetId === d.pdf.assetId))
         put("pdfs", {id: "imp-" + doc.id, deckId: deck.id, folderId: d.folder ? folderForDeck(deck, d.folder) : folderForDeck(deck, "Cours"), name: d.pdf.name, assetId: d.pdf.assetId, size: d.pdf.size || 0, pages: d.pdf.pages || 0, created: Date.now()});
